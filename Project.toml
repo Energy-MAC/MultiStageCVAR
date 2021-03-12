@@ -1,5 +1,6 @@
 [deps]
 CPLEX = "a076750e-1247-5638-91d2-ce28b192dca0"
+Logging = "56ddb016-857b-54e1-b83d-db4d58db5568"
 PowerSimulations = "e690365d-45e2-57bb-ac84-44ba829e73c4"
 PowerSystems = "bcd98974-b02a-5e2f-9ee0-a103f5c450dd"
 SDDP = "f4570300-c277-11e8-125c-4912f86ce65d"
