@@ -220,7 +220,7 @@ function get_sddp_model(problem::PSI.OperationsProblem{MultiStageCVAR})
             )
         else
             # Ignore the generators in the final stage.
-            @constraint(sp, [g ∈ thermal_gens_names], pg[g].out == pg[g].in)
+            SDDP.@constraint(sp, [g ∈ thermal_gens_names], pg[g].out == pg[g].in)
         end
 
         ϵ = 0.1
