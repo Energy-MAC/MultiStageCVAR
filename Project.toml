@@ -1,8 +1,13 @@
 [deps]
 CPLEX = "a076750e-1247-5638-91d2-ce28b192dca0"
+CSV = "336ed68f-0bac-5ca0-87d4-7b16caf5d00b"
 DataFrames = "a93c6f00-e57d-5684-b7b6-d8193f3e46c0"
 Dates = "ade2ca70-3891-5945-98fb-dc099432e06a"
+ElectronDisplay = "d872a56f-244b-5cc9-b574-2017b5b909a8"
+JSON = "682c06a0-de6a-54ab-a142-c8b1cf79cde6"
 Logging = "56ddb016-857b-54e1-b83d-db4d58db5568"
+Plots = "91a5bcdd-55d7-5caf-9e0b-520d859cae80"
+PowerGraphics = "5f7eddb3-86b1-49e8-a95a-ddc0f45eea41"
 PowerSimulations = "e690365d-45e2-57bb-ac84-44ba829e73c4"
 PowerSystems = "bcd98974-b02a-5e2f-9ee0-a103f5c450dd"
 SDDP = "f4570300-c277-11e8-125c-4912f86ce65d"
