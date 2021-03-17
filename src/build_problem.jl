@@ -12,9 +12,9 @@ function apply_cc_constraints!(problem)
 end
 
 function apply_must_run_constraints!(problem)
-    system = PSY.get_system(problem)
-    time_steps = PSI.model_time_steps(optimization_container)
+    system = PSI.get_system(problem)
     optimization_container = PSI.get_optimization_container(problem)
+    time_steps = PSI.model_time_steps(optimization_container)
     must_run_gens = [g for g in PSY.get_components(ThermalMultiStart, system, x -> PSY.get_must_run(x))]
     commitment_variables = PSI.get_variable(optimization_container, :On__ThermalMultiStart)
     for t in time_steps, g in get_name.(must_run_gens)
@@ -22,7 +22,7 @@ function apply_must_run_constraints!(problem)
     end
 end
 
-function PSI.problem_build!(problem::PSI.OperationsProblem{MultiStageCVAR})
+function PSI.problem_build!(problem::PSI.OperationsProblem{StandardUnitCommitmentCC})
         PSI.build_impl!(
         PSI.get_optimization_container(problem),
         PSI.get_template(problem),
@@ -40,52 +40,23 @@ end
 
 function set_initial_reserve!(problem::PSI.OperationsProblem{MultiStageCVAR})
     system = PSI.get_system(problem)
-    info_map = Dict((PSY.get_name(d) => PSY.get_active_power_limits(d).max*PSY.get_status(d)) for d in PSY.get_components(ThermalMultiStart, system))
-    problem.ext["reserve_vars_up"] = info_map
-    problem.ext["reserve_vars_dn"] = deepcopy(info_map)
+    problem.ext["reserve_vars_up"] = Dict{String, Float64}()
+    problem.ext["reserve_vars_dn"] = Dict{String, Float64}()
+    for v in problem.ext["balancing_up_devices_names"]
+        gen = PSY.get_component(ThermalMultiStart, system, v)
+        problem.ext["reserve_vars_up"][v] = PSY.get_active_power_limits(gen).max*PSY.get_status(gen)
+    end
+
+    for v in problem.ext["balancing_dn_devices_names"]
+       gen = PSY.get_component(ThermalMultiStart, system, v)
+       problem.ext["reserve_vars_dn"][v] = PSY.get_active_power_limits(gen).max*PSY.get_status(gen)
+    end
+
 end
 
-function set_inputs_dic!(problem::PSI.OperationsProblem{MultiStageCVAR})
-    case_initial_time = PSI.get_initial_time(problem)
-    problem.ext["MINS_IN_HOUR"] = MINS_IN_HOUR = 60.0
-    problem.ext["Δt"] = Δt = 1/12
+function set_time_series!(problem::PSI.OperationsProblem{MultiStageCVAR}, case_initial_time::Dates.DateTime)
     optimization_container = PSI.get_optimization_container(problem)
     time_periods = PSI.model_time_steps(optimization_container)
-    system = get_system(problem)
-    thermal_generators = PSY.get_components(PSY.ThermalMultiStart, system)
-    problem.ext["thermal_gens_names"] = thermal_gens_names = PSY.get_name.(thermal_generators)
-    hydro_generators = PSY.get_components(PSY.HydroGen, system)
-    hydro_gens_names = PSY.get_name.(hydro_generators)
-
-    problem.ext["cost_component"] = Dict(thermal_gens_names .=> PSY.get_operation_cost.(thermal_generators) .|> get_variable)
-
-    get_rmp_up_limit(g) = PSY.get_ramp_limits(g).up
-    get_rmp_dn_limit(g) = PSY.get_ramp_limits(g).down
-
-    reg_reserve_up = PSY.get_component(PSY.VariableReserve{PSY.ReserveUp}, system, "REG_UP")
-    reg_reserve_dn = PSY.get_component(PSY.VariableReserve{PSY.ReserveUp}, system, "REG_UP")
-    reg_up_devices = get_contributing_devices(system, reg_reserve_up)
-    reg_dn_devices = get_contributing_devices(system, reg_reserve_dn)
-    problem.ext["balancing_up_devices_names"] = get_name.(reg_up_devices)
-    problem.ext["balancing_dn_devices_names"] = get_name.(reg_up_devices)
-
-    problem.ext["pg_lim"] = Dict(
-        g => get_active_power_limits(get_component(ThermalMultiStart, system, g))
-        for g in thermal_gens_names
-    )
-
-    problem.ext["pg0"] = Dict(
-        g => get_active_power(get_component(ThermalMultiStart, system, g))
-        for g in thermal_gens_names
-    )
-
-    problem.ext["ramp_up"] = Dict(
-        g => get_rmp_up_limit(get_component(ThermalMultiStart, system, g)) * Δt * MINS_IN_HOUR for g in thermal_gens_names)
-    problem.ext["ramp_dn"] = Dict(
-        g => get_rmp_dn_limit(get_component(ThermalMultiStart, system, g)) * Δt * MINS_IN_HOUR for g in thermal_gens_names)
-
-    problem.ext["not_balancing_thermal"] = intersect(thermal_gens_names, union(problem.ext["balancing_up_devices_names"], problem.ext["balancing_dn_devices_names"]))
-
 
     problem.ext["total_load"] = zeros(length(time_periods))
     problem.ext["total_solar"] = zeros(length(time_periods))
@@ -126,14 +97,59 @@ function set_inputs_dic!(problem::PSI.OperationsProblem{MultiStageCVAR})
     end
 end
 
+function set_inputs_dic!(problem::PSI.OperationsProblem{MultiStageCVAR})
+    case_initial_time = PSI.get_initial_time(problem)
+    problem.ext["MINS_IN_HOUR"] = MINS_IN_HOUR = 60.0
+    problem.ext["Δt"] = Δt = 1/12
+    optimization_container = PSI.get_optimization_container(problem)
+    time_periods = PSI.model_time_steps(optimization_container)
+    system = get_system(problem)
+    thermal_generators = PSY.get_components(PSY.ThermalMultiStart, system)
+    problem.ext["thermal_gens_names"] = thermal_gens_names = PSY.get_name.(thermal_generators)
+    hydro_generators = PSY.get_components(PSY.HydroGen, system)
+    hydro_gens_names = PSY.get_name.(hydro_generators)
+
+    problem.ext["cost_component"] = Dict(thermal_gens_names .=> PSY.get_operation_cost.(thermal_generators) .|> get_variable)
+
+    get_rmp_up_limit(g) = PSY.get_ramp_limits(g).up
+    get_rmp_dn_limit(g) = PSY.get_ramp_limits(g).down
+
+    reg_reserve_up = PSY.get_component(PSY.VariableReserve{PSY.ReserveUp}, system, "REG_UP")
+    reg_reserve_dn = PSY.get_component(PSY.VariableReserve{PSY.ReserveDown}, system, "REG_DN")
+    reg_up_devices = get_contributing_devices(system, reg_reserve_up)
+    reg_dn_devices = get_contributing_devices(system, reg_reserve_dn)
+    problem.ext["balancing_up_devices_names"] = get_name.(reg_up_devices)
+    problem.ext["balancing_dn_devices_names"] = get_name.(reg_dn_devices)
+
+    problem.ext["pg_lim"] = Dict(
+        g => get_active_power_limits(get_component(ThermalMultiStart, system, g))
+        for g in thermal_gens_names
+    )
+
+    problem.ext["pg0"] = Dict(
+        g => get_active_power(get_component(ThermalMultiStart, system, g))
+        for g in thermal_gens_names
+    )
+
+    problem.ext["ramp_up"] = Dict(
+        g => get_rmp_up_limit(get_component(ThermalMultiStart, system, g)) * Δt * MINS_IN_HOUR for g in thermal_gens_names)
+    problem.ext["ramp_dn"] = Dict(
+        g => get_rmp_dn_limit(get_component(ThermalMultiStart, system, g)) * Δt * MINS_IN_HOUR for g in thermal_gens_names)
+
+    problem.ext["not_balancing_thermal"] = intersect(thermal_gens_names, union(problem.ext["balancing_up_devices_names"], problem.ext["balancing_dn_devices_names"]))
+
+    set_time_series!(problem, case_initial_time)
+end
+
 function get_sddp_model(problem::PSI.OperationsProblem{MultiStageCVAR})
     settings = PSI.get_settings(problem)
+    optimization_container = PSI.get_optimization_container(problem)
+    time_periods = PSI.model_time_steps(optimization_container)
     thermal_gens_names = problem.ext["thermal_gens_names"]
     not_balancing_thermal = problem.ext["not_balancing_thermal"]
     balancing_devices_names_up = problem.ext["balancing_up_devices_names"]
     balancing_devices_names_dn = problem.ext["balancing_dn_devices_names"]
     cost_component = problem.ext["cost_component"]
-    time_periods = problem.ext["time_periods"]
     pg_lim = problem.ext["pg_lim"]
     pg0 = problem.ext["pg0"]
 
@@ -161,7 +177,7 @@ function get_sddp_model(problem::PSI.OperationsProblem{MultiStageCVAR})
         optimizer = PSI.get_optimizer(settings)
     ) do sp, node
         t, markov_state = node[1] - 1, node[2]
-        set_silent(sp)
+        SDDP.set_silent(sp)
 
         SDDP.@variable(sp,
             commit_vars[g]*pg_lim[g].min <= pg[g ∈ thermal_gens_names] <= pg_lim[g].max*commit_vars[g],
@@ -181,8 +197,8 @@ function get_sddp_model(problem::PSI.OperationsProblem{MultiStageCVAR})
             # PWL Cost function auxiliary variables
             0 <= λ[g in thermal_gens_names, i in 1:length(cost_component[g])] <= PSY.get_breakpoint_upperbounds(cost_component[g])[i]
             # slack can be used for debugging purposes. Free if necessary.
-            slack⁺ == 0
-            slack⁻ == 0
+            slack⁺ >= 0
+            slack⁻ >= 0
         end)
 
         SDDP.@constraints(sp, begin
@@ -195,8 +211,8 @@ function get_sddp_model(problem::PSI.OperationsProblem{MultiStageCVAR})
                     for i in 1:length(cost_component[g])
                 )
             # Additional range constraints
-            [g in balancing_devices_names_up], pg[g].in + rsv_up[g] <= pg_lim[g].max
-            [g in balancing_devices_names_dn], pg[g].in - rsv_dn[g] >= pg_lim[g].min
+            [g in balancing_devices_names_up], pg[g].in + rsv_up[g] <= pg_lim[g].max*commit_vars[g]
+            [g in balancing_devices_names_dn], pg[g].in - rsv_dn[g] >= pg_lim[g].min*commit_vars[g]
 
             [g in balancing_devices_names_up], pg[g].out - pg[g].in <= ramp_up[g] - rsv_up[g]
             [g in balancing_devices_names_dn], pg[g].in - pg[g].out <= ramp_dn[g] - rsv_dn[g]
@@ -216,6 +232,8 @@ function get_sddp_model(problem::PSI.OperationsProblem{MultiStageCVAR})
                 total_load[t + 1] ==
                     total_solar[t + 1] +
                     total_wind[t + 1] +
+                    total_hydro[t + 1] +
+                    #+ slack⁺ - slack⁻ +
                     sum(pg[g].out for g ∈ thermal_gens_names)
             )
         else
@@ -249,8 +267,9 @@ function get_sddp_model(problem::PSI.OperationsProblem{MultiStageCVAR})
 end
 
 function PSI.problem_build!(problem::PSI.OperationsProblem{MultiStageCVAR})
+    set_inputs_dic!(problem)
     set_initial_commitment!(problem)
     set_initial_reserve!(problem)
-    set_inputs_dic!(problem)
     mod = get_sddp_model(problem)
+    problem.ext["mod"] = mod
 end
