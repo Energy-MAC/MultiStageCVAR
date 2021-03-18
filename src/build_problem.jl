@@ -55,6 +55,7 @@ function set_initial_reserve!(problem::PSI.OperationsProblem{MultiStageCVAR})
 end
 
 function set_time_series!(problem::PSI.OperationsProblem{MultiStageCVAR}, case_initial_time::Dates.DateTime)
+    @show case_initial_time
     optimization_container = PSI.get_optimization_container(problem)
     time_periods = PSI.model_time_steps(optimization_container)
 
@@ -67,7 +68,7 @@ function set_time_series!(problem::PSI.OperationsProblem{MultiStageCVAR}, case_i
 
     problem.ext["area_solar_forecast_prob"] = area_solar_forecast_prob = PSY.get_time_series_values(
         Probabilistic, area, "solar_power"; start_time = case_initial_time,
-    )
+    )/100
 
     problem.ext["prob_set"] = 1:size(area_solar_forecast_prob)[2]
     problem.ext["prob_values"] = (1/length(problem.ext["prob_set"])).*ones(size(area_solar_forecast_prob))
@@ -78,22 +79,22 @@ function set_time_series!(problem::PSI.OperationsProblem{MultiStageCVAR}, case_i
 
     for l in get_components(PowerLoad, system)
         f = get_time_series_values(Deterministic, l, "max_active_power"; start_time = case_initial_time)
-        problem.ext["total_load"] .+= f
+        problem.ext["total_load"] .+= f*PSY.get_max_active_power(l)
     end
 
     for l in get_components(RenewableGen, system, x -> get_prime_mover(x) == PrimeMovers.PVe)
         f = get_time_series_values(Deterministic, l, "max_active_power"; start_time = case_initial_time)
-        problem.ext["total_solar"] .+= f
+        problem.ext["total_solar"] .+= f*PSY.get_max_active_power(l)
     end
 
     for l in get_components(RenewableGen, system, x -> get_prime_mover(x) != PrimeMovers.PVe)
         f = get_time_series_values(Deterministic, l, "max_active_power"; start_time = case_initial_time)
-        problem.ext["total_wind"] .+= f
+        problem.ext["total_wind"] .+= f*PSY.get_max_active_power(l)
     end
 
     for l in get_components(HydroGen, system)
         f = get_time_series_values(Deterministic, l, "max_active_power"; start_time = case_initial_time,)
-        problem.ext["total_hydro"] .+= f
+        problem.ext["total_hydro"] .+= f*PSY.get_max_active_power(l)
     end
 end
 
@@ -142,6 +143,13 @@ function set_inputs_dic!(problem::PSI.OperationsProblem{MultiStageCVAR})
 end
 
 function get_sddp_model(problem::PSI.OperationsProblem{MultiStageCVAR})
+    # Checklist
+    # TimeSeries generation -> ok
+    # Ramp Rates -> ok
+    # Device Limits -> ok
+    # Probabilistic Forecast -> ok
+    # Cost functions ->
+
     settings = PSI.get_settings(problem)
     optimization_container = PSI.get_optimization_container(problem)
     time_periods = PSI.model_time_steps(optimization_container)
@@ -195,7 +203,7 @@ function get_sddp_model(problem::PSI.OperationsProblem{MultiStageCVAR})
             ACE⁺ >= 0
             ACE⁻ >= 0
             # PWL Cost function auxiliary variables
-            0 <= λ[g in thermal_gens_names, i in 1:length(cost_component[g])] <= PSY.get_breakpoint_upperbounds(cost_component[g])[i]
+            0 <= λ[g in thermal_gens_names, i in 1:length(cost_component[g])] <= PSY.get_breakpoint_upperbounds(cost_component[g])[i]*commit_vars[g]
             # slack can be used for debugging purposes. Free if necessary.
             slack⁺ >= 0
             slack⁻ >= 0
@@ -207,7 +215,7 @@ function get_sddp_model(problem::PSI.OperationsProblem{MultiStageCVAR})
                 sum(λ[g, i] for i = 1:length(cost_component[g])) == pg[g].in
             [g in thermal_gens_names],
                 cg[g] >= sum(
-                    λ[g, i] * get_slopes(cost_component[g])[i]
+                    100.0 * λ[g, i] * PSY.get_slopes(cost_component[g])[i]
                     for i in 1:length(cost_component[g])
                 )
             # Additional range constraints
@@ -252,7 +260,8 @@ function get_sddp_model(problem::PSI.OperationsProblem{MultiStageCVAR})
         else
             SDDP.@constraint(sp,
                 ACE⁺ - ACE⁻ ==
-                    total_wind[t] +
+                    total_wind[t + 1] +
+                    total_hydro[t + 1] +
                     area_solar_prob[t, markov_state] +
                     sum(pg[g].in for g in thermal_gens_names) -
                     total_load[t] +
@@ -260,7 +269,7 @@ function get_sddp_model(problem::PSI.OperationsProblem{MultiStageCVAR})
                     sum(rsv_dn[g] for g in balancing_devices_names_dn)
 
             )
-            SDDP.@stageobjective(sp, sum(cg) * Δt + 1000 * CVAR)
+            SDDP.@stageobjective(sp, sum(cg) * Δt + 1e6 * CVAR)
         end
     end
 
