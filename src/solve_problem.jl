@@ -1,14 +1,32 @@
-function PSI.solve!(
+function PSI.write_problem_results!(
+    step::Int,
     problem::PSI.OperationsProblem{MultiStageCVAR},
-)
+    start_time::Dates.DateTime,
+    store::PSI.SimulationStore,
+    exports
+    )
     model = problem.ext["mod"]
-    SDDP.train(model; iteration_limit = 2_000, cut_deletion_minimum = 100)
+    sim_dir = dirname(PSI.get_output_dir(problem))
     sims = SDDP.simulate(
         model,
         1_000,
         [:pg, :rsv_up, :rsv_dn, :ACE⁺, :ACE⁻, :CVAR, :cvar_a]
     )
-    # write_model_results!(store, problem, start_time; exports = exports)
-    advance_execution_count!(problem)
-    return # RunStatus.SUCCESSFUL
+
+    path = joinpath(sim_dir, "results")
+    open(joinpath(path, "sddp_sol_$(step).json"), "w") do io
+        write(io, JSON.json(sims))
+    end
+
+end
+
+function PSI.solve!(
+    problem::PSI.OperationsProblem{MultiStageCVAR},
+)
+    model = problem.ext["mod"]
+    SDDP.train(model; stopping_rules = [SDDP.BoundStalling(5, 0.1)],
+                      time_limit = 60,
+                      cut_deletion_minimum = 100)
+
+    return PSI.RunStatus.SUCCESSFUL
 end
