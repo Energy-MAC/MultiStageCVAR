@@ -16,6 +16,7 @@ function update_data!(problem::PSI.OperationsProblem{MultiStageCVAR}, sim::PSI.S
     variable = PSI.get_variable(hauc_optimization_container, :On__ThermalMultiStart)
     for (k, v) in problem.ext["commit_vars"]
         var = variable[k, 1]
+
         problem.ext["commit_vars"][k] = get_jump_var_value(var)
     end
 
@@ -25,13 +26,15 @@ function update_data!(problem::PSI.OperationsProblem{MultiStageCVAR}, sim::PSI.S
         problem.ext["pg0"][k] = get_jump_var_value(var)
     end
 
-    variable = PSI.get_variable(hauc_optimization_container, :REG_UP__VariableReserve_ReserveUp)
+    variable =
+        PSI.get_variable(hauc_optimization_container, :REG_UP__VariableReserve_ReserveUp)
     for (k, v) in problem.ext["reserve_vars_up"]
         var = variable[k, 1]
         problem.ext["reserve_vars_up"][k] = get_jump_var_value(var)
     end
 
-    variable = PSI.get_variable(hauc_optimization_container, :REG_DN__VariableReserve_ReserveDown)
+    variable =
+        PSI.get_variable(hauc_optimization_container, :REG_DN__VariableReserve_ReserveDown)
     for (k, v) in problem.ext["reserve_vars_dn"]
         var = variable[k, 1]
         problem.ext["reserve_vars_dn"][k] = get_jump_var_value(var)
@@ -39,7 +42,10 @@ function update_data!(problem::PSI.OperationsProblem{MultiStageCVAR}, sim::PSI.S
     set_time_series!(problem, current_time)
 end
 
-function PSI.update_problem!(problem::PSI.OperationsProblem{MultiStageCVAR}, sim::PSI.Simulation)
+function PSI.update_problem!(
+    problem::PSI.OperationsProblem{MultiStageCVAR},
+    sim::PSI.Simulation,
+)
     update_data!(problem, sim)
     problem.ext["mod"] = get_sddp_model(problem::PSI.OperationsProblem{MultiStageCVAR})
 end
