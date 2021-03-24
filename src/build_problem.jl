@@ -69,7 +69,7 @@ function set_time_series!(
     problem::PSI.OperationsProblem{MultiStageCVAR},
     case_initial_time::Dates.DateTime,
 )
-    @show case_initial_time
+    @info case_initial_time
     optimization_container = PSI.get_optimization_container(problem)
     time_periods = PSI.model_time_steps(optimization_container)
 
@@ -89,22 +89,8 @@ function set_time_series!(
                 start_time = case_initial_time,
             ) / 100
 
-    problem.ext["prob_set"] = 1:size(area_solar_forecast_prob)[2]
-    problem.ext["prob_values"] =
-        (1 / length(problem.ext["prob_set"])) .* ones(size(area_solar_forecast_prob))
-
-    N = length(problem.ext["prob_set"])
-    p = fill(1 / N, N)
-    problem.ext["MARKOV_TRANSITION"] = Matrix{Float64}[[1.0]', (p ./ sum(p))']
-    # Uncomment this code for sparse Transition Matrix
-    # ρ = 0.6
-    # ev = fill((1 - ρ) / 2, N - 1)
-    # ev[1] += ev[1]
-    # Tmat = LinearAlgebra.Tridiagonal(reverse(ev), fill(ρ, N), ev)
-    Tmat = fill(1 / N, N, N)
-    for t in 2:(length(time_periods) - 1)
-        push!(problem.ext["MARKOV_TRANSITION"], Tmat)
-    end
+    problem.ext["no_solar"] = all(iszero.(area_solar_forecast_prob))
+    problem.ext["no_solar"] && return
 
     for l in get_components(PowerLoad, system)
         f = get_time_series_values(
@@ -118,24 +104,28 @@ function set_time_series!(
 
     for l in
         get_components(RenewableGen, system, x -> get_prime_mover(x) == PrimeMovers.PVe)
-        f = get_time_series_values(
-            Deterministic,
-            l,
-            "max_active_power";
-            start_time = case_initial_time,
-        )
-        problem.ext["total_solar"] .+= f * PSY.get_max_active_power(l)
+        if get_available(l)
+            f = get_time_series_values(
+                Deterministic,
+                l,
+                "max_active_power";
+                start_time = case_initial_time,
+            )
+            problem.ext["total_solar"] .+= f * PSY.get_max_active_power(l)
+        end
     end
 
     for l in
         get_components(RenewableGen, system, x -> get_prime_mover(x) != PrimeMovers.PVe)
-        f = get_time_series_values(
-            Deterministic,
-            l,
-            "max_active_power";
-            start_time = case_initial_time,
-        )
-        problem.ext["total_wind"] .+= f * PSY.get_max_active_power(l)
+        if get_available(l)
+            f = get_time_series_values(
+                Deterministic,
+                l,
+                "max_active_power";
+                start_time = case_initial_time,
+            )
+            problem.ext["total_wind"] .+= f * PSY.get_max_active_power(l)
+        end
     end
 
     for l in get_components(HydroGen, system)
@@ -210,6 +200,25 @@ function set_inputs_dic!(problem::PSI.OperationsProblem{MultiStageCVAR})
     )
 
     set_time_series!(problem, case_initial_time)
+
+    area_solar_forecast_prob = problem.ext["area_solar_forecast_prob"]
+    problem.ext["prob_set"] = 1:size(area_solar_forecast_prob)[2]
+    problem.ext["prob_values"] =
+        (1 / length(problem.ext["prob_set"])) .* ones(size(area_solar_forecast_prob))
+
+    N = length(problem.ext["prob_set"])
+    p = fill(1 / N, N)
+    problem.ext["MARKOV_TRANSITION"] = Matrix{Float64}[[1.0]', (p ./ sum(p))']
+    # Uncomment this code for sparse Transition Matrix
+    # ρ = 0.6
+    # ev = fill((1 - ρ) / 2, N - 1)
+    # ev[1] += ev[1]
+    # Tmat = LinearAlgebra.Tridiagonal(reverse(ev), fill(ρ, N), ev)
+    Tmat = fill(1 / N, N, N)
+    for t in 2:(length(time_periods) - 1)
+        push!(problem.ext["MARKOV_TRANSITION"], Tmat)
+    end
+
 end
 
 function get_sddp_model(problem::PSI.OperationsProblem{MultiStageCVAR})
@@ -257,7 +266,7 @@ function get_sddp_model(problem::PSI.OperationsProblem{MultiStageCVAR})
         transition_matrices = problem.ext["MARKOV_TRANSITION"],
         sense = :Min,
         lower_bound = 0.0,
-        optimizer = CPLEX.Optimizer,
+        optimizer = sddp_solver,
         direct_mode = true,
     ) do sp, node
         t, markov_state = node[1] - 1, node[2]
@@ -282,9 +291,7 @@ function get_sddp_model(problem::PSI.OperationsProblem{MultiStageCVAR})
                 ACE⁺ >= 0
                 ACE⁻ >= 0
                 # PWL Cost function auxiliary variables
-                0 <=
-                λ[g in thermal_gens_names, i in 1:length(cost_component[g])] <=
-                PSY.get_breakpoint_upperbounds(cost_component[g])[i]
+                0 <= λ[g in thermal_gens_names, i in 1:length(cost_component[g])] <= PSY.get_breakpoint_upperbounds(cost_component[g])[i]
                 # slack can be used for debugging purposes. Free if necessary.
                 # slack⁺ >= 0
                 # slack⁻ >= 0
@@ -325,7 +332,7 @@ function get_sddp_model(problem::PSI.OperationsProblem{MultiStageCVAR})
             SDDP.@constraint(
                 sp,
                 # total_load[t + 1] + slack⁺ - slack⁻ ==
-                total_load[t + 1] ==
+                0.95*total_load[t + 1] <=
                 total_solar[t + 1] +
                 total_wind[t + 1] +
                 total_hydro[t + 1] +
@@ -338,7 +345,7 @@ function get_sddp_model(problem::PSI.OperationsProblem{MultiStageCVAR})
         end
 
         ϵ = 0.1
-        SDDP.@variable(sp, 0 <= cvar_a <= 20, SDDP.State, initial_value = 0.0)
+        SDDP.@variable(sp, 0 <= cvar_a, SDDP.State, initial_value = 0.0)
         SDDP.@variable(sp, cvar_y >= 0)
         SDDP.@constraint(sp, cvar_y >= ACE⁺ + ACE⁻ - cvar_a.in)
         SDDP.@expression(sp, CVAR, cvar_a.in + 1 / ϵ * cvar_y)
@@ -349,14 +356,18 @@ function get_sddp_model(problem::PSI.OperationsProblem{MultiStageCVAR})
             SDDP.@constraint(
                 sp,
                 ACE⁺ - ACE⁻ ==
-                total_wind[t + 1] +
-                total_hydro[t + 1] +
+                total_wind[t] +
+                total_hydro[t] +
                 area_solar_prob[t, markov_state] +
                 sum(pg[g].in for g in thermal_gens_names) - total_load[t] +
                 sum(rsv_up[g] for g in balancing_devices_names_up) -
                 sum(rsv_dn[g] for g in balancing_devices_names_dn)
             )
-            SDDP.@stageobjective(sp, sum(cg) * Δt + 1e6 * CVAR)
+            SDDP.@stageobjective(sp, sum(cg) * Δt / 1000 +
+               1e3 * (ACE⁺ + ACE⁻) +
+               sum(rsv_up[g] for g in balancing_devices_names_up) +
+               sum(rsv_dn[g] for g in balancing_devices_names_dn)
+               )
         end
     end
 end
