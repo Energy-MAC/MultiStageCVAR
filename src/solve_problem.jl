@@ -5,6 +5,8 @@ function PSI.write_problem_results!(
     store::PSI.SimulationStore,
     exports,
 )
+    problem.ext["no_solar"] && return
+
     model = problem.ext["mod"]
     sim_dir = dirname(PSI.get_output_dir(problem))
     sims =
@@ -14,17 +16,33 @@ function PSI.write_problem_results!(
     open(joinpath(path, "sddp_sol_$(step).json"), "w") do io
         write(io, JSON.json(sims))
     end
+
+    # thermal_gens_names = [k for (k, v) in problem.ext["commit_vars"] if v]
+    # balancing_devices_names_up = [k for (k, v) in problem.ext["reserve_vars_up"] if v > 0.0]
+    # balancing_devices_names_dn = [k for (k, v) in problem.ext["reserve_vars_dn"] if v > 0.0]
+
+    # open(joinpath(path, "sddp_gen_$(step).json"), "w") do io
+    #     write(io, JSON.json(thermal_gens_names))
+    #     write(io, JSON.json(balancing_devices_names_up))
+    #     write(io, JSON.json(balancing_devices_names_dn))
+    # end
 end
 
 function PSI.solve!(problem::PSI.OperationsProblem{MultiStageCVAR})
-    model = problem.ext["mod"]
-    SDDP.train(
-        model;
-        print_level = 2,
-        stopping_rules = [SDDP.BoundStalling(5, 10)],
-        time_limit = 1000,
-        cut_deletion_minimum = 100,
-    )
-
+    if !problem.ext["no_solar"]
+        try
+            model = problem.ext["mod"]
+            SDDP.train(
+                model;
+                stopping_rules = [SDDP.BoundStalling(5, 10)],
+                time_limit = 2000,
+                cut_deletion_minimum = 100,
+                run_numerical_stability_report = false,
+            )
+        catch e
+            problem.ext["no_solar"] = true
+            @info "step_failed"
+        end
+    end
     return PSI.RunStatus.SUCCESSFUL
 end
