@@ -72,7 +72,7 @@ function set_time_series!(
     @info case_initial_time
     optimization_container = PSI.get_optimization_container(problem)
     time_periods = PSI.model_time_steps(optimization_container)
-
+    system = PSI.get_system(problem)
     problem.ext["total_load"] = zeros(length(time_periods))
     problem.ext["total_solar"] = zeros(length(time_periods))
     problem.ext["total_wind"] = zeros(length(time_periods))
@@ -214,11 +214,11 @@ function set_inputs_dic!(problem::PSI.OperationsProblem{MultiStageCVAR})
     # ev = fill((1 - ρ) / 2, N - 1)
     # ev[1] += ev[1]
     # Tmat = LinearAlgebra.Tridiagonal(reverse(ev), fill(ρ, N), ev)
+    # Tmat = 0.1 * fill(1 / N, N, N) + 0.9 * Tmat
     Tmat = fill(1 / N, N, N)
     for t in 2:(length(time_periods) - 1)
         push!(problem.ext["MARKOV_TRANSITION"], Tmat)
     end
-
 end
 
 function get_sddp_model(problem::PSI.OperationsProblem{MultiStageCVAR})
@@ -255,7 +255,9 @@ function get_sddp_model(problem::PSI.OperationsProblem{MultiStageCVAR})
     # There are based on the results of the previous problem run
     commit_vars = problem.ext["commit_vars"]
     reserve_vars_up = problem.ext["reserve_vars_up"]
+    @info reserve_vars_up
     reserve_vars_dn = problem.ext["reserve_vars_dn"]
+    @info reserve_vars_dn
 
     ramp_up = problem.ext["ramp_up"]
     ramp_dn = problem.ext["ramp_dn"]
@@ -267,7 +269,7 @@ function get_sddp_model(problem::PSI.OperationsProblem{MultiStageCVAR})
         sense = :Min,
         lower_bound = 0.0,
         optimizer = sddp_solver,
-        direct_mode = true,
+        # direct_mode = true,
     ) do sp, node
         t, markov_state = node[1] - 1, node[2]
         SDDP.set_silent(sp)
@@ -291,7 +293,9 @@ function get_sddp_model(problem::PSI.OperationsProblem{MultiStageCVAR})
                 ACE⁺ >= 0
                 ACE⁻ >= 0
                 # PWL Cost function auxiliary variables
-                0 <= λ[g in thermal_gens_names, i in 1:length(cost_component[g])] <= PSY.get_breakpoint_upperbounds(cost_component[g])[i]
+                0 <=
+                λ[g in thermal_gens_names, i in 1:length(cost_component[g])] <=
+                PSY.get_breakpoint_upperbounds(cost_component[g])[i]
                 # slack can be used for debugging purposes. Free if necessary.
                 # slack⁺ >= 0
                 # slack⁻ >= 0
@@ -329,22 +333,22 @@ function get_sddp_model(problem::PSI.OperationsProblem{MultiStageCVAR})
 
         # System balance for the next stage
         if t < length(time_periods)
-            SDDP.@constraint(
-                sp,
-                # total_load[t + 1] + slack⁺ - slack⁻ ==
-                0.95*total_load[t + 1] <=
-                total_solar[t + 1] +
-                total_wind[t + 1] +
-                total_hydro[t + 1] +
-                #+ slack⁺ - slack⁻ +
-                sum(pg[g].out for g in thermal_gens_names)
-            )
+            # SDDP.@constraint(
+            #     sp,
+            #     # total_load[t + 1] + slack⁺ - slack⁻ ==
+            #     0.95*total_load[t + 1] <=
+            #     total_solar[t + 1] +
+            #     total_wind[t + 1] +
+            #     total_hydro[t + 1] +
+            #     + slack⁺ - slack⁻ +
+            #     sum(pg[g].out for g in thermal_gens_names)
+            # )
         else
             # Ignore the generators in the final stage.
             SDDP.@constraint(sp, [g ∈ thermal_gens_names], pg[g].out == pg[g].in)
         end
 
-        ϵ = 0.1
+        ϵ = 0.8
         SDDP.@variable(sp, 0 <= cvar_a, SDDP.State, initial_value = 0.0)
         SDDP.@variable(sp, cvar_y >= 0)
         SDDP.@constraint(sp, cvar_y >= ACE⁺ + ACE⁻ - cvar_a.in)
@@ -363,11 +367,13 @@ function get_sddp_model(problem::PSI.OperationsProblem{MultiStageCVAR})
                 sum(rsv_up[g] for g in balancing_devices_names_up) -
                 sum(rsv_dn[g] for g in balancing_devices_names_dn)
             )
-            SDDP.@stageobjective(sp, sum(cg) * Δt / 1000 +
-               1e3 * (ACE⁺ + ACE⁻) +
-               sum(rsv_up[g] for g in balancing_devices_names_up) +
-               sum(rsv_dn[g] for g in balancing_devices_names_dn)
-               )
+            SDDP.@stageobjective(
+                sp,
+                sum(cg) * Δt / 1000 +
+                1e3 * (ACE⁺ + ACE⁻) +
+                sum(rsv_up[g] for g in balancing_devices_names_up) +
+                sum(rsv_dn[g] for g in balancing_devices_names_dn)
+            )
         end
     end
 end
