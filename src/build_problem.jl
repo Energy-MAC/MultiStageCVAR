@@ -29,7 +29,17 @@ function apply_must_run_constraints!(problem)
     end
 end
 
-function PSI.problem_build!(problem::PSI.OperationsProblem{StandardUnitCommitmentCC})
+function PSI.problem_build!(problem::PSI.OperationsProblem{StandardDAUnitCommitmentCC})
+    PSI.build_impl!(
+        PSI.get_optimization_container(problem),
+        PSI.get_template(problem),
+        PSI.get_system(problem),
+    )
+    apply_cc_constraints!(problem)
+    apply_must_run_constraints!(problem)
+end
+
+function PSI.problem_build!(problem::PSI.OperationsProblem{StandardHAUnitCommitmentCC})
     PSI.build_impl!(
         PSI.get_optimization_container(problem),
         PSI.get_template(problem),
@@ -206,18 +216,27 @@ function set_inputs_dic!(problem::PSI.OperationsProblem{MultiStageCVAR})
     problem.ext["prob_values"] =
         (1 / length(problem.ext["prob_set"])) .* ones(size(area_solar_forecast_prob))
 
+    N = 99 # Number of quantiles
+    function probability(D, N)
+        D_trunc = Distributions.truncated(D, 1, N)
+        y = Distributions.pdf.(D_trunc, 1:N) .+ 1e-3
+        y ./= sum(y)
+        return y
+    end
+
+    Nor = x -> Distributions.Normal(x, 25)
+    Tmat = hcat(probability.(Nor.(1:N), N)...)
+
     N = length(problem.ext["prob_set"])
     p = fill(1 / N, N)
-    problem.ext["MARKOV_TRANSITION"] = Matrix{Float64}[[1.0]', (p ./ sum(p))']
-    # Uncomment this code for sparse Transition Matrix
-    # ρ = 0.6
-    # ev = fill((1 - ρ) / 2, N - 1)
-    # ev[1] += ev[1]
-    # Tmat = LinearAlgebra.Tridiagonal(reverse(ev), fill(ρ, N), ev)
-    # Tmat = 0.1 * fill(1 / N, N, N) + 0.9 * Tmat
-    Tmat = fill(1 / N, N, N)
-    for t in 2:(length(time_periods) - 1)
-        push!(problem.ext["MARKOV_TRANSITION"], Tmat)
+    problem.ext["MARKOV_TRANSITION"] = Matrix{Float64}[(p ./ sum(p))']
+
+    # Tri = x -> Distributions.TriangularDist(x - 11, x + 11, x)
+    # Tmat = hcat(probability.(Tri.(1:N), N)...)
+
+    # Tmat = fill(1 / N, N, N)
+    for t in 2:length(time_periods)
+        push!(problem.ext["MARKOV_TRANSITION"], Tmat')
     end
 end
 
@@ -253,11 +272,10 @@ function get_sddp_model(problem::PSI.OperationsProblem{MultiStageCVAR})
     area_solar_prob = problem.ext["area_solar_forecast_prob"]
 
     # There are based on the results of the previous problem run
-    commit_vars = problem.ext["commit_vars"]
     reserve_vars_up = problem.ext["reserve_vars_up"]
-    @info reserve_vars_up
+    # @info reserve_vars_up
     reserve_vars_dn = problem.ext["reserve_vars_dn"]
-    @info reserve_vars_dn
+    # @info reserve_vars_dn
 
     ramp_up = problem.ext["ramp_up"]
     ramp_dn = problem.ext["ramp_dn"]
@@ -348,7 +366,7 @@ function get_sddp_model(problem::PSI.OperationsProblem{MultiStageCVAR})
             SDDP.@constraint(sp, [g ∈ thermal_gens_names], pg[g].out == pg[g].in)
         end
 
-        ϵ = 0.8
+        ϵ = 0.2
         SDDP.@variable(sp, 0 <= cvar_a, SDDP.State, initial_value = 0.0)
         SDDP.@variable(sp, cvar_y >= 0)
         SDDP.@constraint(sp, cvar_y >= ACE⁺ + ACE⁻ - cvar_a.in)

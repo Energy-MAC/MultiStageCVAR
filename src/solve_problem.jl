@@ -10,7 +10,7 @@ function PSI.write_problem_results!(
     model = problem.ext["mod"]
     sim_dir = dirname(PSI.get_output_dir(problem))
     sims =
-        SDDP.simulate(model, 1_000, [:pg, :rsv_up, :rsv_dn, :ACE⁺, :ACE⁻, :CVAR, :cvar_a])
+        SDDP.simulate(model, 5_000, [:pg, :rsv_up, :rsv_dn, :ACE⁺, :ACE⁻, :CVAR, :cvar_a])
 
     path = joinpath(sim_dir, "results")
     open(joinpath(path, "sddp_sol_$(step).json"), "w") do io
@@ -34,8 +34,8 @@ function PSI.solve!(problem::PSI.OperationsProblem{MultiStageCVAR})
             model = problem.ext["mod"]
             SDDP.train(
                 model;
-                stopping_rules = [SDDP.BoundStalling(5, 10)],
-                time_limit = 2000,
+                stopping_rules = [SDDP.BoundStalling(20, 1)],
+                time_limit = 10000,
                 cut_deletion_minimum = 100,
                 run_numerical_stability_report = false,
             )
