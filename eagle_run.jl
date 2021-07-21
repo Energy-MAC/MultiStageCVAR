@@ -6,7 +6,7 @@ using Dates
 
 solver = JuMP.optimizer_with_attributes(
     CPLEX.Optimizer,
-    "CPXPARAM_MIP_Tolerances_MIPGap" => 2e-3,
+    "CPXPARAM_MIP_Tolerances_MIPGap" => 2e-6,
     "CPXPARAM_OptimalityTarget" => 1,
 )
 
