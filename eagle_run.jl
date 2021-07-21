@@ -33,14 +33,14 @@ end
 set_service_model!(template_hauc, ServiceModel(VariableReserve{ReserveUp}, RangeReserve))
 set_service_model!(template_hauc, ServiceModel(VariableReserve{ReserveDown}, RangeReserve))
 
-DAUC = OperationsProblem(
-    StandardHAUnitCommitmentCC,
-    template_dauc,
-    system_da,
-    optimizer = solver,
-)
+#DAUC = OperationsProblem(
+#    StandardHAUnitCommitmentCC,
+#    template_dauc,
+#    system_da,
+#    optimizer = solver,
+#)
 
-DAUC.ext["cc_restrictions"] = JSON.parsefile("data/cc_restrictions.json")
+#DAUC.ext["cc_restrictions"] = JSON.parsefile("data/cc_restrictions.json")
 
 HAUC = OperationsProblem(
     StandardHAUnitCommitmentCC,
