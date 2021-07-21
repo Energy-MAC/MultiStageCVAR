@@ -12,7 +12,7 @@ function update_data!(problem::PSI.OperationsProblem{MultiStageCVAR}, sim::PSI.S
     problem.ext["no_solar"] && return
     @info "Updating SDDP Data"
     problems = PSI.get_problems(sim)
-    hauc = problems["UC"]
+    hauc = problems["HAUC"]
     hauc_optimization_container = PSI.get_optimization_container(hauc)
 
     variable = PSI.get_variable(hauc_optimization_container, :On__ThermalMultiStart)
