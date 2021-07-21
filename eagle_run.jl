@@ -27,7 +27,7 @@ for template in [template_dauc, template_hauc]
     set_device_model!(template, RenewableDispatch, RenewableFullDispatch)
     set_device_model!(template, PowerLoad, StaticPowerLoad)
     set_device_model!(template, HydroDispatch, FixedOutput)
-    set_device_model!(template, ThermalMultiStart, ThermalStandardUnitCommitment)
+    set_device_model!(template, ThermalMultiStart, ThermalBasicUnitCommitment)
 end
 
 set_service_model!(template_hauc, ServiceModel(VariableReserve{ReserveUp}, RangeReserve))
