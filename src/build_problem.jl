@@ -88,7 +88,7 @@ function set_time_series!(
     problem.ext["total_wind"] = zeros(length(time_periods))
     problem.ext["total_hydro"] = zeros(length(time_periods))
 
-    area = PSY.get_component(Area, system, "1")
+    area = PSY.get_component(Area, system, "FarWest")
 
     problem.ext["area_solar_forecast_prob"] =
         area_solar_forecast_prob =
