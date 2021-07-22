@@ -29,6 +29,100 @@ function apply_must_run_constraints!(problem)
     end
 end
 
+function apply_reserve_restrictions!(problem)
+    system = PSI.get_system(problem)
+    optimization_container = PSI.get_optimization_container(problem)
+    time_steps = PSI.model_time_steps(optimization_container)
+
+    res_dn_var = PSI.get_variable(optimization_container, :REG_DN__VariableReserve_ReserveDown)
+    res_up_var = PSI.get_variable(optimization_container, :REG_UP__VariableReserve_ReserveUp)
+    spi = PSI.get_variable(optimization_container, :SPIN__VariableReserve_ReserveUp)
+
+    up_resv_units = union(axes(res_up_var)[1], axes(spi)[1])
+    constraint_up = PSI.add_cons_container!(
+        optimization_container,
+        :up_constraint_rsv,
+        up_resv_units,
+        time_steps,
+    )
+
+    constraint_down = PSI.add_cons_container!(
+        optimization_container,
+        :dn_constraint_rsv,
+        axes(res_dn_var)[1],
+        time_steps,
+    )
+
+    jump_model = PSI.get_jump_model(optimization_container)
+    for t in time_steps
+        for name in up_resv_units
+            exp = JuMP.AffExpr()
+            name in axes(res_up_var)[1] && JuMP.add_to_expression!(exp, res_up_var[name, t])
+            name in axes(spi)[1] && JuMP.add_to_expression!(exp, spi[name, t])
+            gen = PSY.get_component(ThermalMultiStart, system, name)
+            constraint_up[name, t] =
+                JuMP.@constraint(jump_model, exp <= 0.2*PSY.get_max_active_power(gen))
+        end
+        for name in axes(res_dn_var)[1]
+            gen = PSY.get_component(ThermalMultiStart, system, name)
+            constraint_down[name, t] =
+                JuMP.@constraint(jump_model, res_dn_var[name, t] <= 0.2*PSY.get_max_active_power(gen))
+        end
+    end
+    return
+end
+
+
+
+function apply_reserve_variance_restrictions!(problem)
+    system = PSI.get_system(problem)
+    optimization_container = PSI.get_optimization_container(problem)
+    time_steps = PSI.model_time_steps(optimization_container)
+
+    res_dn_var = PSI.get_variable(optimization_container, :REG_DN__VariableReserve_ReserveDown)
+    res_up_var = PSI.get_variable(optimization_container, :REG_UP__VariableReserve_ReserveUp)
+    spi = PSI.get_variable(optimization_container, :SPIN__VariableReserve_ReserveUp)
+    name = ["dn", "up", "spin"]
+    jump_model = PSI.get_jump_model(optimization_container)
+    for (ix, reserve) in enumerate([res_dn_var, res_up_var, spi])
+        device_names = axes(reserve)[1]
+        constraint_ub = PSI.add_cons_container!(
+        optimization_container,
+        Symbol("rsv_variance_$(name[ix])_ub"),
+        device_names,
+        time_steps,
+        )
+        constraint_lb = PSI.add_cons_container!(
+        optimization_container,
+        Symbol("rsv_variance_$(name[ix])_lb"),
+        device_names,
+        time_steps,
+        )
+        variable = PSI.add_var_container!(
+        optimization_container,
+        Symbol("z_$(name[ix])"),
+        device_names,
+        time_steps,
+        )
+        for device in axes(reserve)[1]
+            average = sum(reserve[device, t] for t in time_steps)/24
+            for t in time_steps
+                variable[device, t] = JuMP.@variable(jump_model, lower_bound = 0.0)
+                JuMP.add_to_expression!(optimization_container.cost_function, variable[device, t])
+                constraint_ub[device, t] = JuMP.@constraint(jump_model, reserve[device, t] - average <= variable[device, t])
+                constraint_lb[device, t] = JuMP.@constraint(jump_model, reserve[device, t] - average >= -variable[device, t])
+            end
+        end
+
+    end
+        JuMP.@objective(
+            jump_model,
+            JuMP.MOI.MIN_SENSE,
+            optimization_container.cost_function
+        )
+    return
+end
+
 function PSI.problem_build!(problem::PSI.OperationsProblem{StandardDAUnitCommitmentCC})
     PSI.build_impl!(
         PSI.get_optimization_container(problem),
@@ -37,6 +131,8 @@ function PSI.problem_build!(problem::PSI.OperationsProblem{StandardDAUnitCommitm
     )
     apply_cc_constraints!(problem)
     apply_must_run_constraints!(problem)
+    apply_reserve_restrictions!(problem)
+    apply_reserve_variance_restrictions!(problem)
 end
 
 function PSI.problem_build!(problem::PSI.OperationsProblem{StandardHAUnitCommitmentCC})
