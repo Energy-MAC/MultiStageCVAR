@@ -15,7 +15,7 @@ function initialize_system(system_file::String, solver, initial_time::Dates.Date
     set_device_model!(template, ThermalMultiStart, ThermalBasicUnitCommitment)
 
     UC =
-        OperationsProblem(StandardDAUnitCommitmentCC, template, system_ha, optimizer = solver)
+        OperationsProblem(StandardHAUnitCommitmentCC, template, system_ha, optimizer = solver)
     UC.ext["cc_restrictions"] = JSON.parsefile("data/cc_restrictions.json")
 
     problems = SimulationProblems(UC = UC)
