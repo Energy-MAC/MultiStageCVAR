@@ -74,7 +74,7 @@ function PSI.update_problem!(
     problem::PSI.OperationsProblem{StandardHAUnitCommitmentCC},
     sim::PSI.Simulation,
 )
-    _update_problem!(problem, sim)
+    PSI._update_problem!(problem, sim)
     optimization_container = PSI.get_optimization_container(problem)
     res_dn_var = PSI.get_variable(optimization_container, :REG_DN__VariableReserve_ReserveDown)
     res_up_var = PSI.get_variable(optimization_container, :REG_UP__VariableReserve_ReserveUp)
