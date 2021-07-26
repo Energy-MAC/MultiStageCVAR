@@ -42,19 +42,34 @@ DAUC = OperationsProblem(
     system_da,
     optimizer = solver,
     optimizer_log_print = true,
-    warm_start = false
+    warm_start = false,
+    initial_time = initial_time,
 )
 
 DAUC.ext["cc_restrictions"] = JSON.parsefile("data/cc_restrictions.json")
 
-#=
 build!(DAUC; output_dir = mktempdir(), serialize = false)
 solve!(DAUC)
 results = ProblemResults(DAUC)
 
-reg = results.variable_values[:REG_UP__VariableReserve_ReserveUp]
+reg_up = results.variable_values[:REG_UP__VariableReserve_ReserveUp]
+reg_dn = results.variable_values[:REG_DN__VariableReserve_ReserveDown]
+spin = results.variable_values[:SPIN__VariableReserve_ReserveUp]
+
+#=
 traces = Vector{GenericTrace{Dict{Symbol, Any}}}()
-for i in eachcol(reg2)
+for i in eachcol(spin)
+    if eltype(i) == Float64 && sum(i) > 1e-3
+        push!(traces, PlotlyJS.scatter(y = i))
+    end
+end
+
+plot(traces, Layout())
+
+
+reg = results.variable_values[:SPIN__VariableReserve_ReserveUp]
+traces = Vector{GenericTrace{Dict{Symbol, Any}}}()
+for i in eachcol(reg)
     if eltype(i) == Float64 && sum(i) > 1e-3
         push!(traces, PlotlyJS.scatter(y = i))
     end
@@ -74,6 +89,7 @@ HAUC = OperationsProblem(
 )
 
 HAUC.ext["cc_restrictions"] = JSON.parsefile("data/cc_restrictions.json")
+HAUC.ext["resv_dauc"] = Dict(:reg_up_da => reg_up, :reg_dn_da => reg_dn, :spin_da => spin)
 
 RCVAR = OperationsProblem(MultiStageCVAR, template_hauc, system_ha, optimizer = sddp_solver)
 
@@ -88,7 +104,7 @@ sequence = SimulationSequence(
     problems = problems,
     #feedforward_chronologies = Dict(("DAUC" => "HAUC") => Synchronize(periods = 24)),
     intervals = Dict(
-        "DAUC" => (Hour(24), Consecutive()),
+        #"DAUC" => (Hour(24), Consecutive()),
         "HAUC" => (Hour(1), RecedingHorizon()),
         #"MSCVAR" => (Hour(1), RecedingHorizon()),
         #    "ED" => (Minute(5), RecedingHorizon()),
