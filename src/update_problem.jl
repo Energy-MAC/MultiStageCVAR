@@ -79,7 +79,7 @@ function PSI.update_problem!(
     res_dn_var = PSI.get_variable(optimization_container, :REG_DN__VariableReserve_ReserveDown)
     res_up_var = PSI.get_variable(optimization_container, :REG_UP__VariableReserve_ReserveUp)
     spi = PSI.get_variable(optimization_container, :SPIN__VariableReserve_ReserveUp)
-
+    time_steps = PSI.model_time_steps(optimization_container)
     map_v = Dict(:reg_up_da => res_up_var, :reg_dn_da => res_dn_var, :spin_da => spi)
     current_time = PSI.get_current_time(sim)
     t = Hour(current_time).value
