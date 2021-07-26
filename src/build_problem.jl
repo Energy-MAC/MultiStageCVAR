@@ -72,8 +72,6 @@ function apply_reserve_restrictions!(problem)
     return
 end
 
-
-
 function apply_reserve_variance_restrictions!(problem)
     system = PSI.get_system(problem)
     optimization_container = PSI.get_optimization_container(problem)
@@ -135,6 +133,37 @@ function PSI.problem_build!(problem::PSI.OperationsProblem{StandardDAUnitCommitm
     apply_reserve_variance_restrictions!(problem)
 end
 
+function apply_reserve_from_da(problem)
+    optimization_container = PSI.get_optimization_container(problem)
+    time_steps = PSI.model_time_steps(optimization_container)
+    res_dn_var = PSI.get_variable(optimization_container, :REG_DN__VariableReserve_ReserveDown)
+    res_up_var = PSI.get_variable(optimization_container, :REG_UP__VariableReserve_ReserveUp)
+    spi = PSI.get_variable(optimization_container, :SPIN__VariableReserve_ReserveUp)
+
+    map_v = Dict(:reg_up_da => res_up_var, :reg_dn_da => res_dn_var, :spin_da => spi)
+
+    for (key, var) in map_v
+        for name in axes(var)[1]
+            data_ = problem.ext["resv_dauc"][key][!, Symbol(name)]
+            for t in time_steps
+                if t < 13
+                    data = data_[1]
+                elseif t >= 12
+                    data = data_[2]
+                end
+
+                if data > 0.01
+                    JuMP.set_lower_bound(var[name, t], data)
+                elseif isapprox(data, 0.0, atol = 1e-3)
+                    JuMP.set_upper_bound(var[name, t], 0.0)
+                else
+                    error("bad reserve read")
+                end
+        end
+        end
+    end
+end
+
 function PSI.problem_build!(problem::PSI.OperationsProblem{StandardHAUnitCommitmentCC})
     PSI.build_impl!(
         PSI.get_optimization_container(problem),
@@ -143,6 +172,7 @@ function PSI.problem_build!(problem::PSI.OperationsProblem{StandardHAUnitCommitm
     )
     apply_cc_constraints!(problem)
     apply_must_run_constraints!(problem)
+    apply_reserve_from_da(problem)
 end
 
 function set_initial_commitment!(problem::PSI.OperationsProblem{MultiStageCVAR})

@@ -69,3 +69,44 @@ function PSI.update_problem!(
         problem.ext["mod"] = get_sddp_model(problem)
     end
 end
+
+function PSI.update_problem!(
+    problem::PSI.OperationsProblem{StandardHAUnitCommitmentCC},
+    sim::PSI.Simulation,
+)
+    _update_problem!(problem, sim)
+    optimization_container = PSI.get_optimization_container(problem)
+    res_dn_var = PSI.get_variable(optimization_container, :REG_DN__VariableReserve_ReserveDown)
+    res_up_var = PSI.get_variable(optimization_container, :REG_UP__VariableReserve_ReserveUp)
+    spi = PSI.get_variable(optimization_container, :SPIN__VariableReserve_ReserveUp)
+
+    map_v = Dict(:reg_up_da => res_up_var, :reg_dn_da => res_dn_var, :spin_da => spi)
+    current_time = PSI.get_current_time(sim)
+    t = Hour(current_time).value
+    for (key, var) in map_v
+        for name in axes(var)[1]
+            data_ = problem.ext["resv_dauc"][key][!, Symbol(name)]
+            for t in time_steps
+                if t < 13
+                    data = data_[t+1]
+                elseif t >= 12
+                    data = data_[t+2]
+                end
+
+                if data > 0.01
+                    JuMP.delete_upper_bound(var[name, t])
+                    JuMP.set_lower_bound(var[name, t], data)
+                elseif isapprox(data, 0.0, atol = 1e-3)
+                    JuMP.set_upper_bound(var[name, t], 0.0)
+                else
+                    error("bad reserve read")
+                end
+        end
+        end
+    end
+
+end
+
+function PSI.update_problem!(problem::)
+
+    _update_problem!(problem, sim)

@@ -3,7 +3,7 @@ using CPLEX
 using PowerSimulations
 using PowerSystems
 using Dates
-using PlotlyJS
+#using PlotlyJS
 
 solver = JuMP.optimizer_with_attributes(
     CPLEX.Optimizer,
@@ -83,8 +83,6 @@ HAUC = OperationsProblem(
     system_ha,
     optimizer = solver,
     optimizer_log_print = false,
-    services_slack_variables = true,
-    warm_start = false
 )
 
 HAUC.ext["cc_restrictions"] = JSON.parsefile("data/cc_restrictions.json")
@@ -120,7 +118,7 @@ sequence = SimulationSequence(
 
 sim = Simulation(
     name = "standard",
-    steps = 1,
+    steps = 24,
     problems = problems,
     sequence = sequence,
     initial_time = initial_time,
