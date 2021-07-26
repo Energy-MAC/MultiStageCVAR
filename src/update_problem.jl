@@ -106,7 +106,3 @@ function PSI.update_problem!(
     end
 
 end
-
-function PSI.update_problem!(problem::)
-
-    _update_problem!(problem, sim)
