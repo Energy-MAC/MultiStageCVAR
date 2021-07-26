@@ -175,6 +175,18 @@ function PSI.problem_build!(problem::PSI.OperationsProblem{StandardHAUnitCommitm
     apply_reserve_from_da(problem)
 end
 
+
+function PSI.problem_build!(problem::PSI.OperationsProblem{StandardHAUnitCommitmentCCinit})
+    PSI.build_impl!(
+        PSI.get_optimization_container(problem),
+        PSI.get_template(problem),
+        PSI.get_system(problem),
+    )
+    apply_cc_constraints!(problem)
+    apply_must_run_constraints!(problem)
+end
+
+
 function set_initial_commitment!(problem::PSI.OperationsProblem{MultiStageCVAR})
     system = PSI.get_system(problem)
     info_map = Dict(
