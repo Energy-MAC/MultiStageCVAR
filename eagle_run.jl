@@ -42,7 +42,6 @@ DAUC = OperationsProblem(
     system_da,
     optimizer = solver,
     optimizer_log_print = true,
-    warm_start = false,
     initial_time = initial_time,
 )
 
