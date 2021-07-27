@@ -72,55 +72,6 @@ function apply_reserve_restrictions!(problem)
     return
 end
 
-function apply_reserve_variance_restrictions!(problem)
-    system = PSI.get_system(problem)
-    optimization_container = PSI.get_optimization_container(problem)
-    time_steps = PSI.model_time_steps(optimization_container)
-
-    res_dn_var = PSI.get_variable(optimization_container, :REG_DN__VariableReserve_ReserveDown)
-    res_up_var = PSI.get_variable(optimization_container, :REG_UP__VariableReserve_ReserveUp)
-    spi = PSI.get_variable(optimization_container, :SPIN__VariableReserve_ReserveUp)
-    name = ["dn", "up", "spin"]
-    jump_model = PSI.get_jump_model(optimization_container)
-    for (ix, reserve) in enumerate([res_dn_var, res_up_var, spi])
-        device_names = axes(reserve)[1]
-        constraint_ub = PSI.add_cons_container!(
-        optimization_container,
-        Symbol("rsv_variance_$(name[ix])_ub"),
-        device_names,
-        time_steps,
-        )
-        constraint_lb = PSI.add_cons_container!(
-        optimization_container,
-        Symbol("rsv_variance_$(name[ix])_lb"),
-        device_names,
-        time_steps,
-        )
-        variable = PSI.add_var_container!(
-        optimization_container,
-        Symbol("z_$(name[ix])"),
-        device_names,
-        time_steps,
-        )
-        for device in axes(reserve)[1]
-            average = sum(reserve[device, t] for t in time_steps)/24
-            for t in time_steps
-                variable[device, t] = JuMP.@variable(jump_model, lower_bound = 0.0)
-                JuMP.add_to_expression!(optimization_container.cost_function, variable[device, t])
-                constraint_ub[device, t] = JuMP.@constraint(jump_model, reserve[device, t] - average <= variable[device, t])
-                constraint_lb[device, t] = JuMP.@constraint(jump_model, reserve[device, t] - average >= -variable[device, t])
-            end
-        end
-
-    end
-        JuMP.@objective(
-            jump_model,
-            JuMP.MOI.MIN_SENSE,
-            optimization_container.cost_function
-        )
-    return
-end
-
 function PSI.problem_build!(problem::PSI.OperationsProblem{StandardDAUnitCommitmentCC})
     PSI.build_impl!(
         PSI.get_optimization_container(problem),
@@ -130,7 +81,6 @@ function PSI.problem_build!(problem::PSI.OperationsProblem{StandardDAUnitCommitm
     apply_cc_constraints!(problem)
     apply_must_run_constraints!(problem)
     apply_reserve_restrictions!(problem)
-    apply_reserve_variance_restrictions!(problem)
 end
 
 function apply_reserve_from_da(problem)
@@ -152,14 +102,18 @@ function apply_reserve_from_da(problem)
                     data = data_[2]
                 end
 
-                if data > 0.01
-                    JuMP.set_lower_bound(var[name, t], data)
+                if data > 1e-3
+                    if JuMP.upper_bound(var[name, t]) < data
+                        error(name)
+                    end
+                    JuMP.set_lower_bound(var[name, t], data*0.99)
                 elseif isapprox(data, 0.0, atol = 1e-3)
+                    JuMP.set_lower_bound(var[name, t], 0.0)
                     JuMP.set_upper_bound(var[name, t], 0.0)
                 else
                     error("bad reserve read")
                 end
-        end
+            end
         end
     end
 end
@@ -172,6 +126,7 @@ function PSI.problem_build!(problem::PSI.OperationsProblem{StandardHAUnitCommitm
     )
     apply_cc_constraints!(problem)
     apply_must_run_constraints!(problem)
+    apply_reserve_restrictions!(problem)
     apply_reserve_from_da(problem)
 end
 
@@ -184,6 +139,7 @@ function PSI.problem_build!(problem::PSI.OperationsProblem{StandardHAUnitCommitm
     )
     apply_cc_constraints!(problem)
     apply_must_run_constraints!(problem)
+    apply_reserve_restrictions!(problem)
 end
 
 
@@ -210,6 +166,28 @@ function set_initial_reserve!(problem::PSI.OperationsProblem{MultiStageCVAR})
         gen = PSY.get_component(ThermalMultiStart, system, v)
         problem.ext["reserve_vars_dn"][v] =
             PSY.get_active_power_limits(gen).max * PSY.get_status(gen)
+    end
+end
+
+function set_initial_reserve!(problem::PSI.OperationsProblem{MultiStageCVAR})
+    system = PSI.get_system(problem)
+    problem.ext["reserve_vars_up"] = Dict{String, Float64}()
+    problem.ext["reserve_vars_dn"] = Dict{String, Float64}()
+    for v in problem.ext["balancing_up_devices_names"]
+        gen = PSY.get_component(ThermalMultiStart, system, v)
+        problem.ext["reserve_vars_up"][v] =
+            PSY.get_active_power_limits(gen).max * PSY.get_status(gen)
+    end
+
+    for v in problem.ext["balancing_dn_devices_names"]
+        gen = PSY.get_component(ThermalMultiStart, system, v)
+        problem.ext["reserve_vars_dn"][v] =
+            PSY.get_active_power_limits(gen).max * PSY.get_status(gen)
+    end
+
+    problem.ext["reserve_spin"] = Dict{String, Float64}()
+    for gen in problem.ext["spin_devices_names"]
+        problem.ext["reserve_spin"][gen] = problem.ext["resv_dauc"][:spin_da][!, Symbol(gen)][1]
     end
 end
 
@@ -313,8 +291,11 @@ function set_inputs_dic!(problem::PSI.OperationsProblem{MultiStageCVAR})
         PSY.get_component(PSY.VariableReserve{PSY.ReserveDown}, system, "REG_DN")
     reg_up_devices = get_contributing_devices(system, reg_reserve_up)
     reg_dn_devices = get_contributing_devices(system, reg_reserve_dn)
+    spin = PSY.get_component(PSY.VariableReserve{PSY.ReserveUp}, system, "SPIN")
+    spin_devices = get_contributing_devices(system, spin)
     problem.ext["balancing_up_devices_names"] = get_name.(reg_up_devices)
     problem.ext["balancing_dn_devices_names"] = get_name.(reg_dn_devices)
+    problem.ext["spin_devices_names"] = get_name.(spin_devices)
 
     problem.ext["pg_lim"] = Dict(
         g => get_active_power_limits(get_component(ThermalMultiStart, system, g)) for
@@ -362,7 +343,7 @@ function set_inputs_dic!(problem::PSI.OperationsProblem{MultiStageCVAR})
         return y
     end
 
-    Nor = x -> Distributions.Normal(x, 25)
+    Nor = x -> Distributions.Normal(x, 5)
     Tmat = hcat(probability.(Nor.(1:N), N)...)
 
     N = length(problem.ext["prob_set"])
@@ -407,6 +388,7 @@ function get_sddp_model(problem::PSI.OperationsProblem{MultiStageCVAR})
     total_wind = problem.ext["total_wind"]
     total_hydro = problem.ext["total_hydro"]
 
+    sping_res(g) = get(problem.ext["reserve_spin"], g, 0.0)
     area_solar_prob = problem.ext["area_solar_forecast_prob"]
 
     # There are based on the results of the previous problem run
@@ -432,7 +414,7 @@ function get_sddp_model(problem::PSI.OperationsProblem{MultiStageCVAR})
 
         SDDP.@variable(
             sp,
-            pg_lim[g].min <= pg[g ∈ thermal_gens_names] <= pg_lim[g].max,
+            pg_lim[g].min <= pg[g ∈ thermal_gens_names] <= pg_lim[g].max + sping_res(g),
             SDDP.State,
             initial_value = pg0[g]
         )

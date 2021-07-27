@@ -16,16 +16,7 @@ function PSI.write_problem_results!(
     open(joinpath(path, "sddp_sol_$(step).json"), "w") do io
         write(io, JSON.json(sims))
     end
-
-    # thermal_gens_names = [k for (k, v) in problem.ext["commit_vars"] if v]
-    # balancing_devices_names_up = [k for (k, v) in problem.ext["reserve_vars_up"] if v > 0.0]
-    # balancing_devices_names_dn = [k for (k, v) in problem.ext["reserve_vars_dn"] if v > 0.0]
-
-    # open(joinpath(path, "sddp_gen_$(step).json"), "w") do io
-    #     write(io, JSON.json(thermal_gens_names))
-    #     write(io, JSON.json(balancing_devices_names_up))
-    #     write(io, JSON.json(balancing_devices_names_dn))
-    # end
+    @info "Finished writing SDDP results"
 end
 
 function PSI.solve!(problem::PSI.OperationsProblem{MultiStageCVAR})
