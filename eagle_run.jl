@@ -57,7 +57,7 @@ spin = results.variable_values[:SPIN__VariableReserve_ReserveUp]
 
 #=
 traces = Vector{GenericTrace{Dict{Symbol, Any}}}()
-for i in eachcol(spin)
+for i in eachcol(reg_up)
     if eltype(i) == Float64 && sum(i) > 1e-3
         push!(traces, PlotlyJS.scatter(y = i))
     end
@@ -83,17 +83,19 @@ HAUC = OperationsProblem(
     system_ha,
     optimizer = solver,
     optimizer_log_print = false,
+    services_slack_variables = false
 )
 
 HAUC.ext["cc_restrictions"] = JSON.parsefile("data/cc_restrictions.json")
 HAUC.ext["resv_dauc"] = Dict(:reg_up_da => reg_up, :reg_dn_da => reg_dn, :spin_da => spin)
 
 RCVAR = OperationsProblem(MultiStageCVAR, template_hauc, system_ha, optimizer = sddp_solver)
+RCVAR.ext["resv_dauc"] = Dict(:reg_up_da => reg_up, :reg_dn_da => reg_dn, :spin_da => spin)
 
 problems = SimulationProblems(
     #DAUC = DAUC,
     HAUC = HAUC,
-    #MSCVAR = RCVAR
+    MSCVAR = RCVAR
     #ED = ED,
 )
 
@@ -103,7 +105,7 @@ sequence = SimulationSequence(
     intervals = Dict(
         #"DAUC" => (Hour(24), Consecutive()),
         "HAUC" => (Hour(1), RecedingHorizon()),
-        #"MSCVAR" => (Hour(1), RecedingHorizon()),
+        "MSCVAR" => (Hour(1), RecedingHorizon()),
         #    "ED" => (Minute(5), RecedingHorizon()),
     ),
     #feedforward = Dict(
@@ -128,6 +130,16 @@ sim = Simulation(
 build_out =
     build!(sim; console_level = Logging.Info, file_level = Logging.Error, serialize = false)
 execute_out = execute!(sim)
+
+results_sim = SimulationResults(sim; ignore_status = true)
+op_problem_res = get_problem_results(results_sim, "HAUC")
+reg_dn_sim = read_variable(op_problem_res, :REG_DN__VariableReserve_ReserveDown)
+t = [sum(r[2:end]) for r in eachrow(red_dn_sim[DateTime("2018-04-01T01:00:00")])]
+
+using PowerGraphics
+plotlyjs()
+set_system!(op_problem_res, system_ha)
+p = plot_fuel(op_problem_res; curtailment = true)
 
 #=
 
