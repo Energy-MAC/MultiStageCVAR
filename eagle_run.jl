@@ -65,7 +65,6 @@ end
 
 plot(traces, Layout())
 
-
 reg = results.variable_values[:SPIN__VariableReserve_ReserveUp]
 traces = Vector{GenericTrace{Dict{Symbol, Any}}}()
 for i in eachcol(reg)
@@ -83,7 +82,7 @@ HAUC = OperationsProblem(
     system_ha,
     optimizer = solver,
     optimizer_log_print = false,
-    services_slack_variables = false
+    services_slack_variables = false,
 )
 
 HAUC.ext["cc_restrictions"] = JSON.parsefile("data/cc_restrictions.json")
@@ -95,7 +94,7 @@ RCVAR.ext["resv_dauc"] = Dict(:reg_up_da => reg_up, :reg_dn_da => reg_dn, :spin_
 problems = SimulationProblems(
     #DAUC = DAUC,
     HAUC = HAUC,
-    MSCVAR = RCVAR
+    MSCVAR = RCVAR,
     #ED = ED,
 )
 

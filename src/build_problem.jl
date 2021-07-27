@@ -34,8 +34,10 @@ function apply_reserve_restrictions!(problem)
     optimization_container = PSI.get_optimization_container(problem)
     time_steps = PSI.model_time_steps(optimization_container)
 
-    res_dn_var = PSI.get_variable(optimization_container, :REG_DN__VariableReserve_ReserveDown)
-    res_up_var = PSI.get_variable(optimization_container, :REG_UP__VariableReserve_ReserveUp)
+    res_dn_var =
+        PSI.get_variable(optimization_container, :REG_DN__VariableReserve_ReserveDown)
+    res_up_var =
+        PSI.get_variable(optimization_container, :REG_UP__VariableReserve_ReserveUp)
     spi = PSI.get_variable(optimization_container, :SPIN__VariableReserve_ReserveUp)
 
     up_resv_units = union(axes(res_up_var)[1], axes(spi)[1])
@@ -61,12 +63,14 @@ function apply_reserve_restrictions!(problem)
             name in axes(spi)[1] && JuMP.add_to_expression!(exp, spi[name, t])
             gen = PSY.get_component(ThermalMultiStart, system, name)
             constraint_up[name, t] =
-                JuMP.@constraint(jump_model, exp <= 0.2*PSY.get_max_active_power(gen))
+                JuMP.@constraint(jump_model, exp <= 0.2 * PSY.get_max_active_power(gen))
         end
         for name in axes(res_dn_var)[1]
             gen = PSY.get_component(ThermalMultiStart, system, name)
-            constraint_down[name, t] =
-                JuMP.@constraint(jump_model, res_dn_var[name, t] <= 0.2*PSY.get_max_active_power(gen))
+            constraint_down[name, t] = JuMP.@constraint(
+                jump_model,
+                res_dn_var[name, t] <= 0.2 * PSY.get_max_active_power(gen)
+            )
         end
     end
     return
@@ -86,8 +90,10 @@ end
 function apply_reserve_from_da(problem)
     optimization_container = PSI.get_optimization_container(problem)
     time_steps = PSI.model_time_steps(optimization_container)
-    res_dn_var = PSI.get_variable(optimization_container, :REG_DN__VariableReserve_ReserveDown)
-    res_up_var = PSI.get_variable(optimization_container, :REG_UP__VariableReserve_ReserveUp)
+    res_dn_var =
+        PSI.get_variable(optimization_container, :REG_DN__VariableReserve_ReserveDown)
+    res_up_var =
+        PSI.get_variable(optimization_container, :REG_UP__VariableReserve_ReserveUp)
     spi = PSI.get_variable(optimization_container, :SPIN__VariableReserve_ReserveUp)
 
     map_v = Dict(:reg_up_da => res_up_var, :reg_dn_da => res_dn_var, :spin_da => spi)
@@ -106,7 +112,7 @@ function apply_reserve_from_da(problem)
                     if JuMP.upper_bound(var[name, t]) < data
                         error(name)
                     end
-                    JuMP.set_lower_bound(var[name, t], data*0.99)
+                    JuMP.set_lower_bound(var[name, t], data * 0.99)
                 elseif isapprox(data, 0.0, atol = 1e-3)
                     JuMP.set_lower_bound(var[name, t], 0.0)
                     JuMP.set_upper_bound(var[name, t], 0.0)
@@ -130,7 +136,6 @@ function PSI.problem_build!(problem::PSI.OperationsProblem{StandardHAUnitCommitm
     apply_reserve_from_da(problem)
 end
 
-
 function PSI.problem_build!(problem::PSI.OperationsProblem{StandardHAUnitCommitmentCCinit})
     PSI.build_impl!(
         PSI.get_optimization_container(problem),
@@ -141,7 +146,6 @@ function PSI.problem_build!(problem::PSI.OperationsProblem{StandardHAUnitCommitm
     apply_must_run_constraints!(problem)
     apply_reserve_restrictions!(problem)
 end
-
 
 function set_initial_commitment!(problem::PSI.OperationsProblem{MultiStageCVAR})
     system = PSI.get_system(problem)
@@ -187,7 +191,8 @@ function set_initial_reserve!(problem::PSI.OperationsProblem{MultiStageCVAR})
 
     problem.ext["reserve_spin"] = Dict{String, Float64}()
     for gen in problem.ext["spin_devices_names"]
-        problem.ext["reserve_spin"][gen] = problem.ext["resv_dauc"][:spin_da][!, Symbol(gen)][1]
+        problem.ext["reserve_spin"][gen] =
+            problem.ext["resv_dauc"][:spin_da][!, Symbol(gen)][1]
     end
 end
 
