@@ -68,6 +68,11 @@ function initialize_system(system_file::String, solver, initial_time::Dates.Date
         set_reactive_power!(th, 0.0)
     end
 
+    reserve_up = get_component(Reserve{ReserveUp}, system_ha, "REG_UP")
+    set_time_frame!(reserve_up, 5.0)
+    reserve_dn = get_component(Reserve{ReserveDown}, system_ha, "REG_DN")
+    set_time_frame!(reserve_dn, 5.0)
+
     to_json(system_ha, system_file; force = true)
     return system_ha
 end

@@ -84,7 +84,7 @@ function PSI.problem_build!(problem::PSI.OperationsProblem{StandardDAUnitCommitm
     )
     apply_cc_constraints!(problem)
     apply_must_run_constraints!(problem)
-    apply_reserve_restrictions!(problem)
+    #apply_reserve_restrictions!(problem)
 end
 
 function apply_reserve_from_da(problem)
@@ -112,10 +112,10 @@ function apply_reserve_from_da(problem)
                     if JuMP.upper_bound(var[name, t]) < data
                         error(name)
                     end
+                    #JuMP.set_upper_bound(var[name, t], 1.0)
                     JuMP.set_lower_bound(var[name, t], data * 0.99)
                 elseif isapprox(data, 0.0, atol = 1e-3)
-                    JuMP.set_lower_bound(var[name, t], 0.0)
-                    JuMP.set_upper_bound(var[name, t], 0.0)
+
                 else
                     error("bad reserve read")
                 end
@@ -132,7 +132,7 @@ function PSI.problem_build!(problem::PSI.OperationsProblem{StandardHAUnitCommitm
     )
     apply_cc_constraints!(problem)
     apply_must_run_constraints!(problem)
-    apply_reserve_restrictions!(problem)
+    # apply_reserve_restrictions!(problem)
     apply_reserve_from_da(problem)
 end
 
@@ -419,7 +419,7 @@ function get_sddp_model(problem::PSI.OperationsProblem{MultiStageCVAR})
 
         SDDP.@variable(
             sp,
-            pg_lim[g].min <= pg[g ∈ thermal_gens_names] <= pg_lim[g].max + sping_res(g),
+            pg_lim[g].min <= pg[g ∈ thermal_gens_names] <= pg_lim[g].max,# + sping_res(g),
             SDDP.State,
             initial_value = pg0[g]
         )

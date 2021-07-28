@@ -53,7 +53,7 @@ function update_data!(problem::PSI.OperationsProblem{MultiStageCVAR}, sim::PSI.S
         rev_up = get(problem.ext["reserve_vars_up"], k, 0.0)
         rev_dn = get(problem.ext["reserve_vars_dn"], k, 0.0)
         lims = problem.ext["pg_lim"][k]
-        problem.ext["pg0"][k] = clamp(var_value, lims.min + rev_dn, lims.max - rev_up)
+        problem.ext["pg0"][k] = clamp(var_value, min(lims.max, lims.min + rev_dn), max(lims.min, lims.max - rev_up))
         if !(lims.min + rev_dn <= problem.ext["pg0"][k] <= lims.max - rev_up)
             @warn k, lims.min + rev_dn, problem.ext["pg0"][k], lims.max - rev_up
         end
@@ -86,18 +86,16 @@ function PSI.update_problem!(
     time_steps = PSI.model_time_steps(optimization_container)
     map_v = Dict(:reg_up_da => res_up_var, :reg_dn_da => res_dn_var, :spin_da => spi)
     current_time = PSI.get_current_time(sim)
-    t = Hour(current_time).value
-
+    simulation_hour = Hour(current_time).value
     for (key, var) in map_v
         for name in axes(var)[1]
             data_ = problem.ext["resv_dauc"][key][!, Symbol(name)]
             for t in time_steps
                 if t < 13
-                    data = data_[t + 1]
+                    data = data_[simulation_hour + 1]
                 elseif t >= 12
-                    data = data_[t + 2]
+                    data = data_[simulation_hour + 2]
                 end
-
                 if data > 1e-3
                     JuMP.set_upper_bound(var[name, t], data * 2)
                     JuMP.set_lower_bound(var[name, t], data)

@@ -30,8 +30,8 @@ for template in [template_dauc, template_hauc]
     set_device_model!(template, PowerLoad, StaticPowerLoad)
     set_device_model!(template, HydroDispatch, FixedOutput)
     set_device_model!(template, ThermalMultiStart, ThermalStandardUnitCommitment)
-    set_service_model!(template, ServiceModel(VariableReserve{ReserveUp}, RangeReserve))
-    set_service_model!(template, ServiceModel(VariableReserve{ReserveDown}, RangeReserve))
+    set_service_model!(template, ServiceModel(VariableReserve{ReserveUp}, RampReserve))
+    set_service_model!(template, ServiceModel(VariableReserve{ReserveDown}, RampReserve))
 end
 
 set_device_model!(template_hauc, ThermalMultiStart, ThermalBasicUnitCommitment)
@@ -55,6 +55,9 @@ reg_up = results.variable_values[:REG_UP__VariableReserve_ReserveUp]
 reg_dn = results.variable_values[:REG_DN__VariableReserve_ReserveDown]
 spin = results.variable_values[:SPIN__VariableReserve_ReserveUp]
 
+t = [sum(r[2:end]) for r in eachrow(reg_dn)]
+
+t = [sum(r[2:end]) for r in eachrow(reg_up)]
 #=
 traces = Vector{GenericTrace{Dict{Symbol, Any}}}()
 for i in eachcol(reg_up)
@@ -90,6 +93,8 @@ HAUC.ext["resv_dauc"] = Dict(:reg_up_da => reg_up, :reg_dn_da => reg_dn, :spin_d
 
 RCVAR = OperationsProblem(MultiStageCVAR, template_hauc, system_ha, optimizer = sddp_solver)
 RCVAR.ext["resv_dauc"] = Dict(:reg_up_da => reg_up, :reg_dn_da => reg_dn, :spin_da => spin)
+RCVAR.ext["ϵ"] = 0.2
+RCVAR.ext["time_limit"] = 1000
 
 problems = SimulationProblems(
     #DAUC = DAUC,
@@ -132,8 +137,12 @@ execute_out = execute!(sim)
 
 results_sim = SimulationResults(sim; ignore_status = true)
 op_problem_res = get_problem_results(results_sim, "HAUC")
+reg_dn_sim = read_variable(op_problem_res, :REG_UP__VariableReserve_ReserveUp)
+t = [sum(r[2:end]) for r in eachrow(reg_dn_sim[DateTime("2018-04-01T07:00:00")])]
+
 reg_dn_sim = read_variable(op_problem_res, :REG_DN__VariableReserve_ReserveDown)
-t = [sum(r[2:end]) for r in eachrow(red_dn_sim[DateTime("2018-04-01T01:00:00")])]
+t = [sum(r[2:end]) for r in eachrow(reg_dn_sim[DateTime("2018-04-01T07:00:00")])]
+
 
 using PowerGraphics
 plotlyjs()
