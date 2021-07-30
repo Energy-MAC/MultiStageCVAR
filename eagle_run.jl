@@ -110,7 +110,7 @@ sequence = SimulationSequence(
         #"DAUC" => (Hour(24), Consecutive()),
         "HAUC" => (Hour(1), RecedingHorizon()),
         "MSCVAR" => (Hour(1), RecedingHorizon()),
-        #    "ED" => (Minute(5), RecedingHorizon()),
+        #"ED" => (Minute(5), RecedingHorizon()),
     ),
     #feedforward = Dict(
     #    ("ED", :devices, :ThermalMultiStart) => SemiContinuousFF(
@@ -134,8 +134,8 @@ sim = Simulation(
 build_out =
     build!(sim; console_level = Logging.Info, file_level = Logging.Error, serialize = false)
 execute_out = execute!(sim)
-
-results_sim = SimulationResults(sim; ignore_status = true)
+#=
+results_sim = SimulationResults("results/standard_july/", 1; ignore_status = true)
 op_problem_res = get_problem_results(results_sim, "HAUC")
 reg_dn_sim = read_variable(op_problem_res, :REG_UP__VariableReserve_ReserveUp)
 t = [sum(r[2:end]) for r in eachrow(reg_dn_sim[DateTime("2018-04-01T07:00:00")])]
@@ -145,11 +145,14 @@ t = [sum(r[2:end]) for r in eachrow(reg_dn_sim[DateTime("2018-04-01T07:00:00")])
 
 
 using PowerGraphics
+using PowerSimulations
 plotlyjs()
-set_system!(op_problem_res, system_ha)
+results_sim = SimulationResults("results/standard_20/", 1; ignore_status = true)
+op_problem_res = get_problem_results(results_sim, "HAUC")
+set_system!(op_problem_res, System("data/HA_sys.json"))
 p = plot_fuel(op_problem_res; curtailment = true)
 
-#=
+
 
 build!(DAUC; output_dir = mktempdir(), serialize = false)
 solve!(DAUC)
