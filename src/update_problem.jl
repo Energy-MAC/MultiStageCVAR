@@ -43,6 +43,8 @@ function update_data!(problem::PSI.OperationsProblem{MultiStageCVAR}, sim::PSI.S
     end
 
     variable = PSI.get_variable(hauc_optimization_container, :P__ThermalMultiStart)
+    total_p0 = 0.0
+    total_p0_ = 0.0
     for (k, v) in problem.ext["commit_vars"]
         if !v
             problem.ext["pg0"][k] = 0.0
@@ -53,11 +55,15 @@ function update_data!(problem::PSI.OperationsProblem{MultiStageCVAR}, sim::PSI.S
         rev_up = get(problem.ext["reserve_vars_up"], k, 0.0)
         rev_dn = get(problem.ext["reserve_vars_dn"], k, 0.0)
         lims = problem.ext["pg_lim"][k]
-        problem.ext["pg0"][k] = clamp(var_value, min(lims.max, lims.min + rev_dn), max(lims.min, lims.max - rev_up))
+        total_p0_ += var_value
+        problem.ext["pg0"][k] = clamp(var_value, lims.min, lims.max)
         if !(lims.min + rev_dn <= problem.ext["pg0"][k] <= lims.max - rev_up)
             @warn k, lims.min + rev_dn, problem.ext["pg0"][k], lims.max - rev_up
         end
+        total_p0 += problem.ext["pg0"][k]
     end
+    @info "init diff" total_p0 - problem.ext["nl_t0"]
+    @info "init diff _" total_p0_ - problem.ext["nl_t0"]
     return
 end
 
@@ -65,6 +71,7 @@ function PSI.update_problem!(
     problem::PSI.OperationsProblem{MultiStageCVAR},
     sim::PSI.Simulation,
 )
+
     update_data!(problem, sim)
     if !problem.ext["no_solar"]
         problem.ext["mod"] = get_sddp_model(problem)
@@ -76,7 +83,6 @@ function PSI.update_problem!(
     sim::PSI.Simulation,
 )
     PSI._update_problem!(problem, sim)
-
     optimization_container = PSI.get_optimization_container(problem)
     res_dn_var =
         PSI.get_variable(optimization_container, :REG_DN__VariableReserve_ReserveDown)
@@ -101,7 +107,7 @@ function PSI.update_problem!(
                     JuMP.set_lower_bound(var[name, t], data)
                 elseif isapprox(data, 0.0, atol = 1e-3)
                     JuMP.set_lower_bound(var[name, t], 0.0)
-                    JuMP.set_upper_bound(var[name, t], 1.0)
+                    JuMP.set_upper_bound(var[name, t], 10.0)
                 else
                     error("bad reserve read")
                 end

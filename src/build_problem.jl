@@ -63,13 +63,13 @@ function apply_reserve_restrictions!(problem)
             name in axes(spi)[1] && JuMP.add_to_expression!(exp, spi[name, t])
             gen = PSY.get_component(ThermalMultiStart, system, name)
             constraint_up[name, t] =
-                JuMP.@constraint(jump_model, exp <= 0.2 * PSY.get_max_active_power(gen))
+                JuMP.@constraint(jump_model, exp <= 0.5 * PSY.get_max_active_power(gen))
         end
         for name in axes(res_dn_var)[1]
             gen = PSY.get_component(ThermalMultiStart, system, name)
             constraint_down[name, t] = JuMP.@constraint(
                 jump_model,
-                res_dn_var[name, t] <= 0.2 * PSY.get_max_active_power(gen)
+                res_dn_var[name, t] <= 0.5 * PSY.get_max_active_power(gen)
             )
         end
     end
@@ -84,7 +84,7 @@ function PSI.problem_build!(problem::PSI.OperationsProblem{StandardDAUnitCommitm
     )
     apply_cc_constraints!(problem)
     apply_must_run_constraints!(problem)
-    #apply_reserve_restrictions!(problem)
+    apply_reserve_restrictions!(problem)
 end
 
 function apply_reserve_from_da(problem)
@@ -112,7 +112,7 @@ function apply_reserve_from_da(problem)
                     if JuMP.upper_bound(var[name, t]) < data
                         error(name)
                     end
-                    #JuMP.set_upper_bound(var[name, t], 1.0)
+                    JuMP.set_upper_bound(var[name, t], data*2)
                     JuMP.set_lower_bound(var[name, t], data * 0.99)
                 elseif isapprox(data, 0.0, atol = 1e-3)
 
@@ -132,7 +132,7 @@ function PSI.problem_build!(problem::PSI.OperationsProblem{StandardHAUnitCommitm
     )
     apply_cc_constraints!(problem)
     apply_must_run_constraints!(problem)
-    # apply_reserve_restrictions!(problem)
+    #apply_reserve_restrictions!(problem)
     apply_reserve_from_da(problem)
 end
 
@@ -154,23 +154,6 @@ function set_initial_commitment!(problem::PSI.OperationsProblem{MultiStageCVAR})
         d in PSY.get_components(ThermalMultiStart, system)
     )
     problem.ext["commit_vars"] = info_map
-end
-
-function set_initial_reserve!(problem::PSI.OperationsProblem{MultiStageCVAR})
-    system = PSI.get_system(problem)
-    problem.ext["reserve_vars_up"] = Dict{String, Float64}()
-    problem.ext["reserve_vars_dn"] = Dict{String, Float64}()
-    for v in problem.ext["balancing_up_devices_names"]
-        gen = PSY.get_component(ThermalMultiStart, system, v)
-        problem.ext["reserve_vars_up"][v] =
-            PSY.get_active_power_limits(gen).max * PSY.get_status(gen)
-    end
-
-    for v in problem.ext["balancing_dn_devices_names"]
-        gen = PSY.get_component(ThermalMultiStart, system, v)
-        problem.ext["reserve_vars_dn"][v] =
-            PSY.get_active_power_limits(gen).max * PSY.get_status(gen)
-    end
 end
 
 function set_initial_reserve!(problem::PSI.OperationsProblem{MultiStageCVAR})
@@ -230,7 +213,7 @@ function set_time_series!(
             "max_active_power";
             start_time = case_initial_time,
         )
-        problem.ext["total_load"] .+= f * PSY.get_max_active_power(l)
+        problem.ext["total_load"] .+= f
     end
 
     for l in
@@ -242,9 +225,11 @@ function set_time_series!(
                 "max_active_power";
                 start_time = case_initial_time,
             )
-            problem.ext["total_solar"] .+= f * PSY.get_max_active_power(l)
+            problem.ext["total_solar"] .+= f
         end
     end
+
+    @assert isapprox(problem.ext["total_solar"][1], problem.ext["area_solar_forecast_prob"][1, 50])
 
     for l in
         get_components(RenewableGen, system, x -> get_prime_mover(x) != PrimeMovers.PVe)
@@ -255,7 +240,7 @@ function set_time_series!(
                 "max_active_power";
                 start_time = case_initial_time,
             )
-            problem.ext["total_wind"] .+= f * PSY.get_max_active_power(l)
+            problem.ext["total_wind"] .+= f
         end
     end
 
@@ -266,8 +251,9 @@ function set_time_series!(
             "max_active_power";
             start_time = case_initial_time,
         )
-        problem.ext["total_hydro"] .+= f * PSY.get_max_active_power(l)
+        problem.ext["total_hydro"] .+= f
     end
+    problem.ext["nl_t0"] = problem.ext["total_load"][1] - problem.ext["total_solar"][1] - problem.ext["total_wind"][1] - problem.ext["total_hydro"][1]
 end
 
 function set_inputs_dic!(problem::PSI.OperationsProblem{MultiStageCVAR})
@@ -412,14 +398,14 @@ function get_sddp_model(problem::PSI.OperationsProblem{MultiStageCVAR})
         sense = :Min,
         lower_bound = 0.0,
         optimizer = sddp_solver,
-        # direct_mode = true,
+        direct_mode = true,
     ) do sp, node
         t, markov_state = node[1] - 1, node[2]
         SDDP.set_silent(sp)
 
         SDDP.@variable(
             sp,
-            pg_lim[g].min <= pg[g ∈ thermal_gens_names] <= pg_lim[g].max,# + sping_res(g),
+            pg_lim[g].min <= pg[g ∈ thermal_gens_names] <= pg_lim[g].max + sping_res(g),
             SDDP.State,
             initial_value = pg0[g]
         )
@@ -457,7 +443,7 @@ function get_sddp_model(problem::PSI.OperationsProblem{MultiStageCVAR})
                     i in 1:length(cost_component[g])
                 )
                 # Additional range constraints
-                [g in balancing_devices_names_up], pg[g].in + rsv_up[g] <= pg_lim[g].max
+                [g in balancing_devices_names_up], pg[g].in + rsv_up[g] <= pg_lim[g].max + sping_res(g)
                 [g in balancing_devices_names_dn], pg[g].in - rsv_dn[g] >= pg_lim[g].min
 
                 [g in balancing_devices_names_up],
@@ -512,8 +498,8 @@ function get_sddp_model(problem::PSI.OperationsProblem{MultiStageCVAR})
             )
             SDDP.@stageobjective(
                 sp,
-                sum(cg) * Δt / 1000 +
-                1e3 * (ACE⁺ + ACE⁻) +
+                sum(cg) * Δt / 10 +
+                1e4 * (ACE⁺ + ACE⁻) +
                 sum(rsv_up[g] for g in balancing_devices_names_up) +
                 sum(rsv_dn[g] for g in balancing_devices_names_dn)
             )
