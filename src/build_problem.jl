@@ -229,8 +229,6 @@ function set_time_series!(
         end
     end
 
-    @assert isapprox(problem.ext["total_solar"][1], problem.ext["area_solar_forecast_prob"][1, 50])
-
     for l in
         get_components(RenewableGen, system, x -> get_prime_mover(x) != PrimeMovers.PVe)
         if get_available(l)
