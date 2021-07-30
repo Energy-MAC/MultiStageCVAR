@@ -122,10 +122,10 @@ sequence = SimulationSequence(
     ini_cond_chronology = IntraProblemChronology(),
 )
 
-#=
+
 sim = Simulation(
     name = "standard",
-    steps = 9,
+    steps = 24,
     problems = problems,
     sequence = sequence,
     initial_time = initial_time,
@@ -136,6 +136,7 @@ build_out =
     build!(sim; console_level = Logging.Info, file_level = Logging.Error, serialize = false)
 execute_out = execute!(sim)
 
+#=
 results_sim = SimulationResults("results/standard_july/", 1; ignore_status = true)
 op_problem_res = get_problem_results(results_sim, "HAUC")
 reg_dn_sim = read_variable(op_problem_res, :REG_UP__VariableReserve_ReserveUp)
