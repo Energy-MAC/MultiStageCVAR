@@ -3,6 +3,10 @@ using CPLEX
 using PowerSimulations
 using PowerSystems
 using Dates
+using CSV
+using DataFrames
+using Random
+Random.seed!(5516)
 #using PlotlyJS
 
 solver = JuMP.optimizer_with_attributes(
@@ -13,8 +17,7 @@ solver = JuMP.optimizer_with_attributes(
 
 initial_time = DateTime("2018-04-01T00:00:00")
 system_ha = initialize_system("data/HA_sys.json", solver, initial_time)
-system_da = initialize_system("data/DA_sys.json", solver, initial_time)
-#system_da = initialize_system("data/DA_sys.json", solver, initial_time)
+ system_da = initialize_system("data/DA_sys.json", solver, initial_time)
 # system_ed = System("data/RT_sys.json"; time_series_read_only = true)
 
 sddp_solver =
@@ -52,8 +55,14 @@ solve!(DAUC)
 results = ProblemResults(DAUC)
 
 reg_up = results.variable_values[:REG_UP__VariableReserve_ReserveUp]
+# reg_up = CSV.read("data/reg_up.csv", DataFrame)
+CSV.write("data/reg_up.csv", reg_up)
 reg_dn = results.variable_values[:REG_DN__VariableReserve_ReserveDown]
+#reg_dn = CSV.read("data/reg_dn.csv", DataFrame)
+CSV.write("data/reg_dn.csv", reg_dn)
 spin = results.variable_values[:SPIN__VariableReserve_ReserveUp]
+#spin = CSV.read("data/reg_spin.csv", DataFrame)
+CSV.write("data/reg_spin.csv", spin)
 
 t = [sum(r[2:end]) for r in eachrow(reg_dn)]
 
@@ -133,7 +142,7 @@ sim = Simulation(
 )
 
 build_out =
-    build!(sim; console_level = Logging.Info, file_level = Logging.Error, serialize = false)
+    build!(sim; console_level = Logging.Info, file_level = Logging.Warn, serialize = false)
 execute_out = execute!(sim)
 
 #=
@@ -145,16 +154,20 @@ t = [sum(r[2:end]) for r in eachrow(reg_dn_sim[DateTime("2018-04-01T07:00:00")])
 reg_dn_sim = read_variable(op_problem_res, :REG_DN__VariableReserve_ReserveDown)
 t = [sum(r[2:end]) for r in eachrow(reg_dn_sim[DateTime("2018-04-01T07:00:00")])]
 
-
+using Revise
+using PowerSystems
 using PowerGraphics
 using PowerSimulations
 plotlyjs()
-results_sim = SimulationResults("results/standard_20/", 1; ignore_status = true)
+results_sim = SimulationResults("results/standard_020/", 1; ignore_status = true)
 op_problem_res = get_problem_results(results_sim, "HAUC")
 set_system!(op_problem_res, System("data/HA_sys.json"))
-p = plot_fuel(op_problem_res; curtailment = true)
+p1 = plot_fuel(op_problem_res) #; curtailment = false)
 
-
+results_sim = SimulationResults("results/standard_july/", 1; ignore_status = true)
+op_problem_res = get_problem_results(results_sim, "HAUC")
+set_system!(op_problem_res, System("data/HA_sys.json"))
+p2 = plot_fuel(op_problem_res; curtailment = false)
 
 build!(DAUC; output_dir = mktempdir(), serialize = false)
 solve!(DAUC)
