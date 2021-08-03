@@ -73,6 +73,7 @@ function PSI.update_problem!(
 )
 
     update_data!(problem, sim)
+    problem.ext["hour"] = Hour(PSI.get_current_time(sim)).value
     if !problem.ext["no_solar"]
         problem.ext["mod"] = get_sddp_model(problem)
     end
