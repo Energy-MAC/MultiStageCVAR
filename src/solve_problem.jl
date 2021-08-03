@@ -10,7 +10,7 @@ function PSI.write_problem_results!(
     model = problem.ext["mod"]
     sim_dir = dirname(PSI.get_output_dir(problem))
     sims =
-        SDDP.simulate(model, 2_500, [:pg, :rsv_up, :rsv_dn, :ACE⁺, :ACE⁻])
+        SDDP.simulate(model, 1_000, [:pg, :rsv_up, :rsv_dn, :ACE⁺, :ACE⁻])
 
     path = joinpath(sim_dir, "results")
     open(joinpath(path, "sddp_sol_$(step).json"), "w") do io
