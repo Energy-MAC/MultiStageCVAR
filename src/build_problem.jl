@@ -394,7 +394,7 @@ function get_sddp_model(problem::PSI.OperationsProblem{MultiStageCVAR})
     model = SDDP.MarkovianPolicyGraph(
         transition_matrices = problem.ext["MARKOV_TRANSITION"],
         sense = :Min,
-        lower_bound = 0.0,
+        lower_bound = 1e3,
         optimizer = sddp_solver,
         direct_mode = true,
     ) do sp, node
@@ -475,7 +475,9 @@ function get_sddp_model(problem::PSI.OperationsProblem{MultiStageCVAR})
             SDDP.@constraint(sp, [g ∈ thermal_gens_names], pg[g].out == pg[g].in)
         end
 
-        ϵ = 0.2
+        last_slope(g) = PSY.get_slopes(cost_component[g])[end]
+
+        ϵ = problem.ext["ϵ"]
         SDDP.@variable(sp, 0 <= cvar_a, SDDP.State, initial_value = 0.0)
         SDDP.@variable(sp, cvar_y >= 0)
         SDDP.@constraint(sp, cvar_y >= ACE⁺ + ACE⁻ - cvar_a.in)
@@ -496,10 +498,10 @@ function get_sddp_model(problem::PSI.OperationsProblem{MultiStageCVAR})
             )
             SDDP.@stageobjective(
                 sp,
-                sum(cg) * Δt / 10 +
+                sum(cg) * Δt / 1000 +
                 1e4 * (ACE⁺ + ACE⁻) +
-                sum(rsv_up[g] for g in balancing_devices_names_up) +
-                sum(rsv_dn[g] for g in balancing_devices_names_dn)
+                (sum(rsv_up[g]*last_slope(g)*Δt for g in balancing_devices_names_up) +
+                sum(rsv_dn[g]*last_slope(g)*0.9*Δt for g in balancing_devices_names_dn))
             )
         end
     end
