@@ -22,10 +22,14 @@ end
 function PSI.solve!(problem::PSI.OperationsProblem{MultiStageCVAR})
     if !problem.ext["no_solar"]
         try
+            if problem.ext["hour"] < 0 
+    		problem.ext["no_solar"] = true 
+    		return PSI.RunStatus.SUCCESSFUL
+            end
             model = problem.ext["mod"]
             SDDP.train(
                 model;
-                stopping_rules = [SDDP.BoundStalling(20, 1)],
+                stopping_rules = [SDDP.BoundStalling(20, 100)],
                 time_limit = RCVAR.ext["time_limit"],
                 cut_deletion_minimum = 100,
                 run_numerical_stability_report = false,

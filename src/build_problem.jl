@@ -394,7 +394,7 @@ function get_sddp_model(problem::PSI.OperationsProblem{MultiStageCVAR})
     model = SDDP.MarkovianPolicyGraph(
         transition_matrices = problem.ext["MARKOV_TRANSITION"],
         sense = :Min,
-        lower_bound = 1e3,
+        lower_bound = 2.5e3,
         optimizer = sddp_solver,
         direct_mode = true,
     ) do sp, node
