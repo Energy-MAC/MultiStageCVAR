@@ -15,9 +15,9 @@ solver = JuMP.optimizer_with_attributes(
     "CPXPARAM_Emphasis_MIP" => 1,
 )
 
-initial_time = DateTime("2018-04-01T00:00:00")
+initial_time = DateTime("2018-08-16T00:00:00")
 system_ha = initialize_system("data/HA_sys.json", solver, initial_time)
- system_da = initialize_system("data/DA_sys.json", solver, initial_time)
+system_da = initialize_system("data/DA_sys.json", solver, initial_time)
 # system_ed = System("data/RT_sys.json"; time_series_read_only = true)
 
 sddp_solver =
@@ -56,13 +56,13 @@ results = ProblemResults(DAUC)
 
 reg_up = results.variable_values[:REG_UP__VariableReserve_ReserveUp]
 # reg_up = CSV.read("data/reg_up.csv", DataFrame)
-CSV.write("data/reg_up.csv", reg_up)
+CSV.write("data/reg_up_0816.csv", reg_up)
 reg_dn = results.variable_values[:REG_DN__VariableReserve_ReserveDown]
 #reg_dn = CSV.read("data/reg_dn.csv", DataFrame)
-CSV.write("data/reg_dn.csv", reg_dn)
+CSV.write("data/reg_dn_0816.csv", reg_dn)
 spin = results.variable_values[:SPIN__VariableReserve_ReserveUp]
 #spin = CSV.read("data/reg_spin.csv", DataFrame)
-CSV.write("data/reg_spin.csv", spin)
+CSV.write("data/reg_spin_0816.csv", spin)
 
 t = [sum(r[2:end]) for r in eachrow(reg_dn)]
 
@@ -133,7 +133,7 @@ sequence = SimulationSequence(
 
 
 sim = Simulation(
-    name = "standard",
+    name = "standard_m_update",
     steps = 24,
     problems = problems,
     sequence = sequence,

@@ -64,6 +64,18 @@ function update_data!(problem::PSI.OperationsProblem{MultiStageCVAR}, sim::PSI.S
     end
     @info "init diff" total_p0 - problem.ext["nl_t0"]
     @info "init diff _" total_p0_ - problem.ext["nl_t0"]
+
+    hour = string(problem.ext["hour"] - 1)
+    @show hour_string = length(hour) > 1 ? hour : "0" * hour
+    mat = CSV.File("/Users/jdlara/Dropbox/Code/MultiStageCVAR/data/tm_online_08162018_$(hour_string)00.csv") |> DataFrame |> Matrix
+    Tmat = mat[:, 2:end] .+ 1e-3
+    for i in 1:99
+        Tmat[i, :] ./= sum(Tmat[i, :])
+    end
+    steps = PSI.model_time_steps(PSI.get_optimization_container(problems["MSCVAR"]))
+    for ix in 2:steps[end]
+        problem.ext["MARKOV_TRANSITION"][ix] = Tmat
+    end
     return
 end
 
@@ -71,9 +83,8 @@ function PSI.update_problem!(
     problem::PSI.OperationsProblem{MultiStageCVAR},
     sim::PSI.Simulation,
 )
-
-    update_data!(problem, sim)
     problem.ext["hour"] = Hour(PSI.get_current_time(sim)).value
+    update_data!(problem, sim)
     if !problem.ext["no_solar"]
         problem.ext["mod"] = get_sddp_model(problem)
     end
