@@ -102,7 +102,7 @@ HAUC.ext["resv_dauc"] = Dict(:reg_up_da => reg_up, :reg_dn_da => reg_dn, :spin_d
 
 RCVAR = OperationsProblem(MultiStageCVAR, template_hauc, system_ha, optimizer = sddp_solver)
 RCVAR.ext["resv_dauc"] = Dict(:reg_up_da => reg_up, :reg_dn_da => reg_dn, :spin_da => spin)
-RCVAR.ext["ϵ"] = 0.2
+RCVAR.ext["ϵ" ]=0.99
 RCVAR.ext["time_limit"] = 3600
 
 problems = SimulationProblems(

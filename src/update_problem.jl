@@ -67,7 +67,7 @@ function update_data!(problem::PSI.OperationsProblem{MultiStageCVAR}, sim::PSI.S
 
     hour = string(problem.ext["hour"] - 1)
     @show hour_string = length(hour) > 1 ? hour : "0" * hour
-    mat = CSV.File("/Users/jdlara/Dropbox/Code/MultiStageCVAR/data/tm_online_08162018_$(hour_string)00.csv") |> DataFrame |> Matrix
+    mat = CSV.File("data/tm_online_08162018_$(hour_string)00.csv") |> DataFrame |> Matrix
     Tmat = mat[:, 2:end] .+ 1e-3
     for i in 1:99
         Tmat[i, :] ./= sum(Tmat[i, :])

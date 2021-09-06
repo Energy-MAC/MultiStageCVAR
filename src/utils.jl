@@ -69,10 +69,13 @@ function initialize_system(system_file::String, solver, initial_time::Dates.Date
     end
 
     reserve_up = get_component(Reserve{ReserveUp}, system_ha, "REG_UP")
-    set_time_frame!(reserve_up, 5.0)
+    set_time_frame!(reserve_up, 35.0)
+    #set_requirement!(reserve_up, get_requirement(reserve_up)/0.5)
     reserve_dn = get_component(Reserve{ReserveDown}, system_ha, "REG_DN")
-    set_time_frame!(reserve_dn, 5.0)
+    set_time_frame!(reserve_dn, 35.0)
+    #set_requirement!(reserve_dn, get_requirement(reserve_dn)/0.5)
 
     to_json(system_ha, system_file; force = true)
     return system_ha
 end
+
